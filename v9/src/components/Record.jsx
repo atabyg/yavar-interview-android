@@ -23,6 +23,7 @@ export default function Record({ folders, onOpen }) {
   const [position, setPosition] = useState("");
   const [folderId, setFolderId] = useState(getSettings().lastFolder);
   const [questionSet, setQuestionSet] = useState(getSettings().questionSet || "critical12");
+  const [questionsOpen, setQuestionsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [partial, setPartial] = useState("");
@@ -112,6 +113,7 @@ export default function Record({ folders, onOpen }) {
     const qs = questionSetFor(questionSet);
     transcriptRef.current = ""; partialRef.current = "";
     setTranscript(""); setPartial(""); setSpeechError(""); setSpeechStatus("");
+    setQuestionsOpen(true);
     try {
       await saveInterview({
         id,
@@ -180,17 +182,20 @@ export default function Record({ folders, onOpen }) {
   const visibleTranscript = [transcript, partial].filter(Boolean).join("\n");
   return (
     <div>
-      {!active && <div className="card">
-        <div className="row" style={{ marginBottom: 8 }}><ListChecks size={17} /><b>نوع پرسش‌نامهٔ مصاحبه</b></div>
-        <select className="inp" value={questionSet} onChange={(e) => { setQuestionSet(e.target.value); saveSettings({ questionSet: e.target.value }); }}>
-          {Object.values(QUESTION_SETS).map((q) => <option value={q.id} key={q.id}>{q.label}</option>)}
-        </select>
-        <div className="mut" style={{ marginTop: 7 }}>{qs.description}؛ پرسش‌ها برای راهنمای مصاحبه و تحلیل مستند استفاده می‌شوند.</div>
-        <details style={{ marginTop: 10 }}>
-          <summary style={{ cursor: "pointer", color: "var(--teal)", fontSize: 13 }}>نمایش پرسش‌های این مجموعه ({qs.questions.length})</summary>
+      <div className="card">
+        <div className="row" style={{ marginBottom: 8 }}><ListChecks size={17} /><b className="grow">{active ? "پرسش‌های مصاحبه (هنگام ضبط)" : "نوع پرسش‌نامهٔ مصاحبه"}</b><span className="mut">{qs.questions.length} سؤال</span></div>
+        {!active && <>
+          <select className="inp" value={questionSet} onChange={(e) => { setQuestionSet(e.target.value); saveSettings({ questionSet: e.target.value }); }}>
+            {Object.values(QUESTION_SETS).map((q) => <option value={q.id} key={q.id}>{q.label}</option>)}
+          </select>
+          <div className="mut" style={{ marginTop: 7 }}>{qs.description}؛ پرسش‌ها برای راهنمای مصاحبه و تحلیل مستند استفاده می‌شوند.</div>
+        </>}
+        {active && <div className="mut" style={{ marginTop: 2 }}>{qs.label} — برای جمع‌وجور شدن صفحه، فهرست را ببندید.</div>}
+        <details open={questionsOpen} onToggle={(e) => setQuestionsOpen(e.currentTarget.open)} style={{ marginTop: 10 }}>
+          <summary style={{ cursor: "pointer", color: "var(--teal)", fontSize: 13 }}>{questionsOpen ? "بستن فهرست پرسش‌ها" : "نمایش پرسش‌های این مجموعه"} ({qs.questions.length})</summary>
           <ol style={{ paddingRight: 22, fontSize: 13, lineHeight: 1.9 }}>{qs.questions.map((q, i) => <li key={i}>{q}</li>)}</ol>
         </details>
-      </div>}
+      </div>
       <div className="card hero">
         <div className="timer">{fmtDur(sec)}</div>
         <div className="mut">{st === "recording" ? "در حال ضبط…" : st === "paused" ? "متوقف شده" : st === "interrupted" ? "ضبط قطع شد" : "آمادهٔ ضبط"}</div>
