@@ -10,7 +10,7 @@ export const DEFAULT_SETTINGS: Settings = {
   endPhrase: "",
   allowBrowserSpeech: false,
   biometricEnabled: false,
-  aiProvider: "deepseek",
+  aiProvider: "openai",
   requirePinOnLaunch: true,
 };
 
@@ -91,7 +91,7 @@ export function loadSaved(): SavedState {
       pin: parsed.pin ?? null,
       failedAttempts: parsed.failedAttempts ?? 0,
       lockUntil: parsed.lockUntil ?? 0,
-      settings: { ...DEFAULT_SETTINGS, ...parsed.settings, endPhrase: parsed.settings?.endPhrase ?? "", allowBrowserSpeech: false, aiProvider: parsed.settings?.aiProvider ?? "deepseek", requirePinOnLaunch: parsed.settings?.requirePinOnLaunch ?? true },
+      settings: { ...DEFAULT_SETTINGS, ...parsed.settings, endPhrase: parsed.settings?.endPhrase ?? "", allowBrowserSpeech: false, aiProvider: "openai", requirePinOnLaunch: parsed.settings?.requirePinOnLaunch ?? true },
       cases: parsed.cases.map((rawCase) => {
         const file = rawCase as CaseFile;
         const audit = Array.isArray(file.audit) ? file.audit : [];
@@ -120,7 +120,7 @@ export function loadSaved(): SavedState {
 export function saveSaved(state: SavedState): void {
   const copy: SavedState = {
     ...state,
-    settings: { ...state.settings, allowBrowserSpeech: false },
+    settings: { ...state.settings, allowBrowserSpeech: false, aiProvider: "openai" },
     cases: state.cases.map((file) => ({
       ...file,
       audit: file.audit.map((event) => ({ at: event.at, action: event.action, detail: event.detail })),
