@@ -23,6 +23,10 @@ export interface Segment {
   /** Engine value only. Null when the engine did not provide one. */
   confidence: number | null;
   origin: "manual" | "browser_speech";
+  /** V3 suggestions are hints only and never official speaker attribution. */
+  questionId?: string;
+  speakerConfidence?: number;
+  speakerSuggested?: Speaker;
 }
 
 export interface AiSuggestion {
@@ -69,6 +73,10 @@ export interface CaseFile {
   synthetic: boolean;
   code: string;
   alias: string;
+  /** Optional, backward-compatible V3 identity fields; use only the minimum necessary. */
+  clientName?: string;
+  clientDetails?: string;
+  expertDetails?: string;
   center: string;
   expertName: string;
   secondExpertName: string;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Lock, Mic, Pause, Play, Plus, Printer, Sparkles, Square, Trash2 } from "lucide-react";
+import { Check, FileSpreadsheet, Lock, Mic, Pause, Play, Plus, Printer, Sparkles, Square, Trash2 } from "lucide-react";
 import { useInterview } from "@/components/interview/context";
 import { Area, Banner, Btn, Check as CheckRow, Field, Panel } from "@/components/interview/ui";
 import { createEducationalCase, createEmptyCase, withAudit } from "@/lib/interview/factory";
@@ -22,6 +22,8 @@ import { applyAiSuggestionToCase, requestAiSuggestions } from "@/lib/interview/a
 import type { AiAssistResult, AiProvider, AiQuestionSuggestion } from "@/lib/interview/ai-assist";
 import { authenticateBiometric, biometricAvailable, isNativeAndroid, savePdfToPublicStorage, sharePdf } from "@/lib/interview/native-exports";
 import { FORM_WORKFLOW } from "@/lib/interview/forms";
+import { getMissingCaseFields, questionCompletionFromSegments, reviewSegment, runFinalTranscriptReview, suggestMetadata } from "@/lib/interview/v3-review";
+import { downloadCaseWorkbook } from "@/lib/interview/v3-export";
 
 export function LockScreen() {
   const { state, setupPin, unlockWith, unlockWithBiometric } = useInterview();
@@ -285,6 +287,25 @@ function CaseScreen() {
   const [draft, setDraft] = useState(active);
   const [error, setError] = useState("");
   useEffect(() => setDraft(active), [active?.id, active?.updatedAt]);
+  useEffect(() => {
+    if (!active?.segments.length) return;
+    const suggested = suggestMetadata(active.segments);
+    setDraft((current) => {
+      if (!current || current.id !== active.id) return current;
+      const next = {
+        ...current,
+        code: current.code.trim() ? current.code : suggested.caseCode ?? current.code,
+        clientName: (current.clientName ?? "").trim() ? current.clientName : suggested.clientName ?? current.clientName,
+        clientDetails: (current.clientDetails ?? "").trim() ? current.clientDetails : suggested.clientDetails ?? current.clientDetails,
+        expertName: current.expertName.trim() ? current.expertName : suggested.expertName ?? current.expertName,
+        expertDetails: (current.expertDetails ?? "").trim() ? current.expertDetails : suggested.expertDetails ?? current.expertDetails,
+        center: current.center.trim() ? current.center : suggested.center ?? current.center,
+      };
+      return next.code === current.code && next.clientName === current.clientName &&
+        next.clientDetails === current.clientDetails && next.expertName === current.expertName &&
+        next.expertDetails === current.expertDetails && next.center === current.center ? current : next;
+    });
+  }, [active?.id, active?.updatedAt, active?.segments.length]);
   if (!active || !draft) return <NeedCase />;
 
   function save() {
@@ -303,6 +324,9 @@ function CaseScreen() {
         ...current,
         code: draft.code.trim(),
         alias: draft.alias.trim(),
+        clientName: (draft.clientName ?? "").trim(),
+        clientDetails: (draft.clientDetails ?? "").trim(),
+        expertDetails: (draft.expertDetails ?? "").trim(),
         center: draft.center.trim(),
         expertName: draft.expertName.trim(),
         secondExpertName: draft.secondExpertName.trim(),
@@ -326,7 +350,22 @@ function CaseScreen() {
       </Banner>
       <Field label="شناسه پرونده" value={draft.code} onChange={(code) => setDraft({ ...draft, code })} />
       <Field label="نام مستعار، اختیاری" value={draft.alias} onChange={(alias) => setDraft({ ...draft, alias })} />
+      <Field label="نام مددجو (در صورت مجاز بودن ثبت)" value={draft.clientName ?? ""} onChange={(clientName) => setDraft({ ...draft, clientName })} />
+      <Area label="مشخصات ضروری مددجو (حداقلی؛ اطلاعات غیرضروری/تشخیصی وارد نشود)" value={draft.clientDetails ?? ""} onChange={(event) => setDraft({ ...draft, clientDetails: event.target.value })} />
       <Field label="مرکز" value={draft.center} onChange={(center) => setDraft({ ...draft, center })} />
+      <Area label="مشخصات حرفه‌ای/سازمانی کارشناس (اختیاری)" value={draft.expertDetails ?? ""} onChange={(event) => setDraft({ ...draft, expertDetails: event.target.value })} />
+      <Btn onClick={() => {
+        const suggested = suggestMetadata(active.segments);
+        setDraft((current) => current ? ({ ...current,
+          code: current.code.trim() ? current.code : suggested.caseCode ?? current.code,
+          clientName: (current.clientName ?? "").trim() ? current.clientName : suggested.clientName ?? current.clientName,
+          clientDetails: (current.clientDetails ?? "").trim() ? current.clientDetails : suggested.clientDetails ?? current.clientDetails,
+          expertName: current.expertName.trim() ? current.expertName : suggested.expertName ?? current.expertName,
+          expertDetails: (current.expertDetails ?? "").trim() ? current.expertDetails : suggested.expertDetails ?? current.expertDetails,
+          center: current.center.trim() ? current.center : suggested.center ?? current.center,
+        }) : current);
+      }}>پیشنهاد تکمیل از متن گفتگو (نیازمند تأیید)</Btn>
+      {getMissingCaseFields(draft).some((field) => field.missing) ? <Banner tone="danger">فیلدهای زیر ناقص‌اند: {getMissingCaseFields(draft).filter((field) => field.missing).map((field) => field.label).join("، ")}. موارد قرمز پیش از نهایی‌سازی باید بررسی شوند.</Banner> : <Banner>فیلدهای اصلی پرونده تکمیل شده‌اند؛ صحت آن‌ها را کنترل کنید.</Banner>}
       <Field label="کارشناس اول" value={draft.expertName} onChange={(expertName) => setDraft({ ...draft, expertName })} />
       <Field label="کارشناس دوم" value={draft.secondExpertName} onChange={(secondExpertName) => setDraft({ ...draft, secondExpertName })} />
       <Panel>
@@ -427,6 +466,7 @@ function RecordScreen() {
   const [endMode, setEndMode] = useState<null | "touch" | "phrase">(null);
   const [phrase, setPhrase] = useState("");
   const [battery, setBattery] = useState("");
+  const [speechOptIn, setSpeechOptIn] = useState(false);
   const secondsRef = useRef(seconds);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -453,6 +493,8 @@ function RecordScreen() {
 
   if (!active) return <NeedCase />;
   const canRecord = active.consentRecorded && active.consentExplained && !active.consentRefused;
+  const liveProgress = questionCompletionFromSegments(active.segments);
+  const liveMappedQuestions = Object.entries(liveProgress).filter(([, item]) => item.seen);
 
   async function start() {
     setError("");
@@ -474,6 +516,7 @@ function RecordScreen() {
       recorder.start(1000);
       recRef.current = recorder;
       setPhase("rec");
+      if (speechOptIn) startBrowserSpeech();
       patchActive(
         (file) => withAudit({ ...file, status: file.status === "draft" ? "recording" : file.status }, "recording_start", "touch"),
         false,
@@ -528,7 +571,8 @@ function RecordScreen() {
             ),
           false,
         );
-      });
+        go("transcript");
+      }).catch(() => setError("ذخیره محلی صوت ناموفق بود؛ گزارش نهایی را تا بررسی وضعیت فایل قطعی نکنید."));
       setPhase("idle");
       setEndMode(null);
       setPhrase("");
@@ -554,7 +598,7 @@ function RecordScreen() {
         const text = result[0]?.transcript?.trim() ?? "";
         const confidence = typeof result[0]?.confidence === "number" && result[0].confidence > 0 ? result[0].confidence : null;
         if (!text) continue;
-        const segment: Segment = {
+        const rawSegment: Segment = {
           id: crypto.randomUUID(),
           speaker: "overlap",
           textRaw: text,
@@ -562,6 +606,14 @@ function RecordScreen() {
           endSec: null,
           confidence,
           origin: "browser_speech",
+        };
+        const review = reviewSegment(rawSegment);
+        const segment: Segment = {
+          ...rawSegment,
+          speaker: review.suggestedSpeaker === "interviewer" && review.speakerConfidence >= 0.7 ? "interviewer" : "overlap",
+          questionId: review.questionId ?? undefined,
+          speakerConfidence: review.speakerConfidence,
+          speakerSuggested: review.suggestedSpeaker,
         };
         patchActive((file) => ({ ...file, segments: [...file.segments, segment] }), true);
       }
@@ -624,10 +676,10 @@ function RecordScreen() {
         <p className="text-sm text-muted">عبارت پایان در تنظیمات خالی است. پایان لمسی همیشه در دسترس است.</p>
       )}
       <Panel>
-        <h2 className="font-medium">تشخیص گفتار ابری غیرفعال است</h2>
-        <p className="mt-1 text-sm leading-normal text-muted">
-          در این نسخه، برای جلوگیری از ارسال ناخواسته صدا به سرویس‌های مرورگر، تشخیص گفتار مرورگر در دسترس نیست. متن را می‌توانید پس از پایان ضبط به‌صورت دستی بازبینی و اصلاح کنید.
-        </p>
+        <h2 className="font-medium">تحلیل زنده متن — نسخه آزمایشی</h2>
+        <CheckRow checked={speechOptIn} onChange={setSpeechOptIn} label="فعال‌سازی تشخیص گفتار مرورگر برای این جلسه (ممکن است صدا/متن به سرویس بیرونی ارسال شود؛ فقط با مجوز سازمان و رضایت آگاهانه فعال کنید)." />
+        <p className="mt-1 text-sm leading-normal text-muted">به‌صورت پیش‌فرض خاموش است. اگر فعال شود، متن تشخیص‌داده‌شده به‌طور تقریبی به گوینده و سؤال مرتبط می‌شود؛ تشخیص نقش قطعی نیست و هیچ امتیاز یا پاسخ رسمی خودکار ثبت نمی‌شود. برای پردازش محرمانه، باید ASR کاملاً روی دستگاه نصب و آزموده شود.</p>
+        {phase === "rec" && liveMappedQuestions.length ? <div className="mt-2 rounded-sm border border-line p-2"><p className="font-medium">سؤال‌های شناسایی‌شده در متن (پیشنهادی)</p><ul className="mt-1 list-disc pe-4">{liveMappedQuestions.map(([id, item]) => <li key={id} className={item.hasClientEvidence ? "text-success" : "text-danger"}>{questionLabel(id)} — {item.hasClientEvidence ? "شاهد احتمالی مددجو؛ بازبینی لازم" : "سؤال/موضوع دیده شد، پاسخ مددجو هنوز تأیید نشده"}</li>)}</ul></div> : null}
       </Panel>
       <Btn onClick={() => go("transcript")}>رفتن به متن</Btn>
       {endMode ? (
@@ -677,7 +729,7 @@ interface SpeechEngine {
 }
 
 function TranscriptScreen() {
-  const { active, patchActive } = useInterview();
+  const { active, patchActive, go } = useInterview();
   const [speaker, setSpeaker] = useState<Speaker>("client");
   const [text, setText] = useState("");
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -694,6 +746,7 @@ function TranscriptScreen() {
     };
   }, [active?.id, active?.audioStored]);
   if (!active) return <NeedCase />;
+  const finalIssues = runFinalTranscriptReview(active);
 
   function addSegment() {
     if (!text.trim()) return;
@@ -714,6 +767,12 @@ function TranscriptScreen() {
     <div className="flex flex-col gap-3 py-4">
       <h1 className="text-xl font-medium">متن و گوینده</h1>
       <Banner>سؤال مصاحبه‌کننده پاسخ مددجو نیست. اگر گوینده مطمئن نیست، وضعیت را نامشخص بگذارید و امتیاز ۲ ندهید.</Banner>
+      <Panel>
+        <h2 className="font-medium">تحلیل محلی خودکار</h2>
+        <p className="mt-1 text-sm leading-normal">بدون کلید API و بدون ارسال متن به اینترنت، برای هر قطعهٔ ثبت‌شده پیشنهاد نقش گوینده و سؤال احتمالی محاسبه می‌شود. این روش قاعده‌محور است، نه مدل زبانی یا تشخیص قطعی گوینده؛ پیشنهادها را در فهرست پایین بررسی و در صورت نیاز با دکمه‌های نقش اصلاح کنید.</p>
+        <p className="mt-1 text-sm text-muted">قطعه‌های گفتگو: {faNum(active.segments.length)} · موارد نیازمند بازبینی: {faNum(active.segments.filter((segment) => reviewSegment(segment).needsHumanReview).length)}</p>
+      </Panel>
+      <Panel><h2 className="font-medium">بازبینی اولیه گفتگو</h2><p className="mt-1 text-sm">موارد نیازمند بررسی: {faNum(finalIssues.filter((issue) => issue.severity !== "info").length)} · نقص‌ها به‌صورت خودکار تکمیل نمی‌شوند.</p><ul className="mt-2 flex flex-col gap-1">{finalIssues.slice(0, 8).map((issue, index) => <li key={issue.code + index} className={issue.severity === "error" ? "text-danger" : issue.severity === "warning" ? "text-danger" : "text-muted"}>{issue.message}</li>)}</ul><Btn className="mt-2" tone="primary" onClick={() => go("report")}>بازبینی نهایی و تولید گزارش</Btn></Panel>
       {audioUrl ? <audio controls src={audioUrl} className="w-full" /> : <p className="text-sm text-muted">فایل صوتی ذخیره نشده. می‌توانید متن را دستی وارد کنید.</p>}
       <Panel>
         <label className="mb-2 block text-sm text-muted">گوینده قطعه تازه</label>
@@ -756,8 +815,14 @@ function TranscriptScreen() {
               ))}
             </div>
             <p className="whitespace-pre-wrap text-base leading-normal">{segment.textRaw}</p>
+            <p className="mt-2 text-sm leading-normal text-muted">
+              تحلیل محلی: نقش احتمالی «{speakerLabel(reviewSegment(segment).suggestedSpeaker)}» · اطمینان تقریبی {faNum(Math.round(reviewSegment(segment).speakerConfidence * 100))}٪
+              {reviewSegment(segment).questionId ? ` · سؤال احتمالی: ${questionLabel(reviewSegment(segment).questionId as string)}` : " · سؤال مشخصی با اطمینان کافی تطبیق نشد"}
+              {reviewSegment(segment).needsHumanReview ? " · بازبینی انسانی لازم است" : ""}
+            </p>
             <p className="mt-1 text-sm text-muted">
-              {segment.origin === "manual" ? "ثبت دستی" : "گفتار مرورگر"}
+              {segment.speakerSuggested ? `پیشنهاد نقش: ${speakerLabel(segment.speakerSuggested)} (${faNum(Math.round((segment.speakerConfidence ?? 0) * 100))}٪) · نیازمند تأیید` : "نقش گوینده بر اساس انتخاب کاربر"}
+              {" · "}{segment.origin === "manual" ? "ثبت دستی" : "گفتار مرورگر"}
               {" · "}
               {segment.confidence === null ? "اطمینان موتور: اعلام نشده" : `اطمینان موتور: ${faNum(segment.confidence.toFixed(2))}`}
             </p>
@@ -778,6 +843,7 @@ function QuestionsScreen() {
   const [aiResult, setAiResult] = useState<AiAssistResult | null>(null);
   if (!active) return <NeedCase />;
   const inScope = new Set(scopeIds(active.kind));
+  const questionProgress = questionCompletionFromSegments(active.segments);
   const question = questionById(openId) ?? QUESTIONS[0]!;
   const answer = active.answers[question.id] ?? {
     evidenceText: "",
@@ -813,18 +879,21 @@ function QuestionsScreen() {
       <div className="flex gap-2 overflow-x-auto md:flex-col md:overflow-visible">
         {QUESTIONS.map((item) => {
           const score = active.answers[item.id]?.expertScore;
+          const currentAnswer = active.answers[item.id];
+          const complete = !!currentAnswer && currentAnswer.status === "answered" && !!currentAnswer.evidenceText.trim() && currentAnswer.speakerConfirmedClient;
           return (
             <button
               key={item.id}
               onClick={() => setOpenId(item.id)}
               className={`min-h-12 shrink-0 rounded-sm border px-3 text-start text-sm ${
                 item.id === question.id ? "border-transparent bg-accent text-accent-fg" : "border-line bg-surface"
-              } ${inScope.has(item.id) ? "" : "opacity-50"}`}
+              } ${complete ? "border-success" : inScope.has(item.id) ? "border-danger text-danger" : "opacity-50"}`}
             >
-              <span className="font-medium">{questionLabel(item.id)}</span>
+              <span className="font-medium">{complete ? "✓ " : inScope.has(item.id) ? "● " : ""}{questionLabel(item.id)}</span>
               {item.critical ? " · حیاتی" : ""}
               {" · "}
               {score === null || score === undefined ? "بی‌امتیاز" : faNum(score)}
+              {questionProgress[item.id]?.seen && !complete ? " · نیازمند بررسی متن" : ""}
             </button>
           );
         })}
@@ -1096,9 +1165,10 @@ function ApproveButton({ who, label, done }: { who: "expert" | "second"; label: 
 function ReportScreen() {
   const { active, state, patchActive } = useInterview();
   const [hash, setHash] = useState("");
-  const [pinOpen, setPinOpen] = useState<null | "save-pdf" | "share-pdf">(null);
+  const [pinOpen, setPinOpen] = useState<null | "save-pdf" | "share-pdf" | "export-xlsx">(null);
   const sheetRef = useRef<HTMLElement>(null);
   const result = active ? evaluate(active) : null;
+  const finalIssues = active ? runFinalTranscriptReview(active) : [];
   useEffect(() => {
     if (!active || !result) return;
     void sha256Hex(canonicalBody(active, result)).then(setHash);
@@ -1138,6 +1208,7 @@ async function exportPdfToPublicFolder() {
           <Printer className="size-4" aria-hidden /> ذخیره PDF در پوشه عمومی
         </Btn>
         <Btn onClick={() => setPinOpen("share-pdf")}>اشتراک PDF با برنامه‌های دیگر</Btn>
+        <Btn onClick={() => setPinOpen("export-xlsx")}><FileSpreadsheet className="size-4" aria-hidden /> دریافت Excel (.xlsx)</Btn>
         {/* Raw/JSON/HTML exports remain disabled until encrypted export is implemented. */}
       </div>
       <p className="no-print text-xs leading-normal text-muted">خروجی HTML، JSON و transcript خام تا زمان پیاده‌سازی خروجی رمزنگاری‌شده غیرفعال‌اند. گزارش PDF به‌طور پیش‌فرض متن کامل مکالمه را شامل نمی‌شود.</p>
@@ -1146,9 +1217,13 @@ async function exportPdfToPublicFolder() {
         <p className="text-sm text-muted">{state.settings.deptTitle}</p>
         <h1 className="mt-2 text-xl font-medium leading-normal">گزارش مصاحبه و ارزیابی شغلی مددجو — خروجی کمکی سامانه</h1>
         <p className="mt-2 text-sm leading-normal">خروجی سامانه به‌تنهایی تصمیم نهایی ارجاع نیست.</p>
+        <section className="mt-3 rounded-sm border border-line p-2"><h2 className="font-medium">بازبینی نهایی transcript</h2><ul className="mt-2 flex flex-col gap-1">{finalIssues.map((issue, index) => <li key={issue.code + index} className={issue.severity === "error" ? "text-danger" : issue.severity === "warning" ? "text-danger" : "text-muted"}>{issue.message}</li>)}</ul></section>
         {active.synthetic ? <p className="mt-2 text-sm">پرونده آموزشی مصنوعی است.</p> : null}
         <dl className="mt-3 grid gap-1 text-sm">
           <div>شناسه: {active.code || "—"}</div>
+          <div>نام مددجو/مستعار: {active.clientName || active.alias || "—"}</div>
+          <div>مشخصات ضروری مددجو: {active.clientDetails || "—"}</div>
+          <div>مشخصات کارشناس: {active.expertDetails || "—"}</div>
           <div>مرکز: {active.center || "—"}</div>
           <div>تاریخ تهیه: {faDate(new Date().toISOString())}</div>
           <div>کارشناس: {active.expertName || "—"} {active.expertApprovedAt ? `(تأیید ${faDate(active.expertApprovedAt)})` : "(هنوز تأیید نشده)"}</div>
@@ -1214,6 +1289,10 @@ async function exportPdfToPublicFolder() {
           onSuccess={() => {
             if (pinOpen === "save-pdf") void exportPdfToPublicFolder().catch((error: unknown) => window.alert(error instanceof Error ? error.message : "ذخیره PDF ناموفق بود."));
             if (pinOpen === "share-pdf") void sharePdfWithOtherApps().catch((error: unknown) => window.alert(error instanceof Error ? error.message : "اشتراک PDF ناموفق بود."));
+            if (pinOpen === "export-xlsx") {
+              try { downloadCaseWorkbook(active); patchActive((file) => withAudit(file, "export_xlsx", "user_triggered_xlsx")); }
+              catch (error) { window.alert(error instanceof Error ? error.message : "ساخت فایل Excel ناموفق بود."); }
+            }
             setPinOpen(null);
           }}
         />
@@ -1251,7 +1330,7 @@ function SettingsScreen() {
         ))}
       </div>
       <p className="text-sm leading-normal text-muted">
-        تشخیص گفتار مرورگر و ارسال صدای آن به سرویس بیرونی در این نسخه غیرفعال است. تنها درخواست آنلاین مجاز در این پیش‌نویس، درخواست AI پس از رضایت جداگانه و اقدام آگاهانه کارشناس است.
+        تشخیص گفتار مرورگر به‌صورت پیش‌فرض خاموش است؛ فعال‌سازی احتمالی فقط با انتخاب صریح در همان جلسه انجام می‌شود و ممکن است پردازش بیرونی داشته باشد. نسخه آفلاین/روی‌دستگاه هنوز نیازمند پیاده‌سازی و آزمون دستگاهی است.
       </p>
       <Field label="عبارت پایان ضبط" value={phrase} onChange={setPhrase} type="password" />
       <Btn onClick={() => setPinOpen("phrase")}>ذخیره عبارت پایان</Btn>
