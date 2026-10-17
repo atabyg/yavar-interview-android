@@ -20,7 +20,7 @@ import { SUGGESTION_LABEL, canonicalBody, closeBlockers, evaluate, scoreAllowed 
 import type { Answer, AnswerStatus, CaseFile, Segment, Speaker } from "@/lib/interview/types";
 import { applyAiSuggestionToCase, requestAiSuggestions } from "@/lib/interview/ai-assist";
 import type { AiAssistResult, AiProvider, AiQuestionSuggestion } from "@/lib/interview/ai-assist";
-import { isNativeAndroid, savePdfToPublicStorage, sharePdf } from "@/lib/interview/native-exports";
+import { authenticateBiometric, biometricAvailable, isNativeAndroid, savePdfToPublicStorage, sharePdf } from "@/lib/interview/native-exports";
 import { FORM_WORKFLOW } from "@/lib/interview/forms";
 
 function downloadBlob(blob: Blob, name: string) {
@@ -33,7 +33,7 @@ function downloadBlob(blob: Blob, name: string) {
 }
 
 export function LockScreen() {
-  const { state, setupPin, unlockWith } = useInterview();
+  const { state, setupPin, unlockWith, unlockWithBiometric } = useInterview();
   const [pin, setPin] = useState("");
   const [again, setAgain] = useState("");
   const [phase, setPhase] = useState<"one" | "two">("one");
@@ -91,6 +91,7 @@ export function LockScreen() {
           <Btn tone="primary" onClick={() => void submit()} disabled={waiting > 0}>
             {setup ? (phase === "one" ? "ادامه" : "ساخت رمز و ورود") : "ورود"}
           </Btn>
+          {!setup && state.settings.biometricEnabled ? <Btn onClick={() => void unlockWithBiometric().then((ok) => { if (!ok) setError("ورود اثرانگشتی انجام نشد؛ با رمز دستگاه وارد شوید."); }).catch(() => setError("احراز اثرانگشتی در این نسخه در دسترس نیست."))} disabled={waiting > 0}>ورود با اثرانگشت</Btn> : null}
           {setup && phase === "two" ? (
             <Btn
               onClick={() => {
@@ -827,7 +828,7 @@ function QuestionsScreen() {
   const aiSuggestion = aiResult?.suggestions.find((item) => item.questionId === question.id) ?? answer.aiSuggestion ?? null;
   const whyNoTwo = !scoreAllowed(2, answer)
     ? "امتیاز ۲ فقط با شاهد، تأیید گویندهٔ مددجو و وضعیت «پاسخ داده شد» ممکن است."
-    : "امتیاز ۲ با شاهد فعلی مجاز است. معیار تفصیلی PDF بارگذاری نشده؛ شما باید آن را با شیوه‌نامه تطبیق دهید.";
+    : "امتیاز ۲ با شاهد فعلی مجاز است؛ امتیاز نهایی را کارشناس بر پایه معیار رسمی تأیید می‌کند.";
 
   return (
     <div className="grid gap-3 py-4 md:grid-cols-[240px_1fr]">
@@ -856,7 +857,7 @@ function QuestionsScreen() {
           {!inScope.has(question.id) ? " · خارج از نسخه فوری" : ""}
         </h1>
         <p className="text-base leading-normal">{question.text}</p>
-        <p className="text-sm text-muted">منبع: {RULES_META.source} صفحهٔ PDF ثبت نشده.</p>
+        <p className="text-sm text-muted">منبع: {RULES_META.source}</p>
         <Panel>
           <h2 className="font-medium">معیار رسمی امتیاز این سؤال (شیوه‌نامه ۱۴۰۵)</h2>
           <div className="mt-2 grid gap-2 text-sm leading-normal">
@@ -873,14 +874,14 @@ function QuestionsScreen() {
           <label className="block text-sm text-muted">ارائه‌دهنده</label>
           <select className="min-h-12 w-full rounded-sm border border-line bg-surface px-3" value={aiProvider} onChange={(event) => setAiProvider(event.target.value as AiProvider)}>
             <option value="deepseek">DeepSeek API</option>
-            <option value="openai-compatible">OpenAI API</option>
+            <option value="openai">OpenAI API</option>
           </select>
           <Field label="کلید API (فقط برای همین درخواست؛ ذخیره نمی‌شود)" type="password" value={aiKey} onChange={setAiKey} />
           <Btn tone="primary" disabled={!active.cloudAiConsent || !aiKey.trim() || aiBusy || active.segments.every((s) => s.speaker !== "client")} onClick={() => {
             setAiError("");
             if (!active.cloudAiConsent) { setAiError("ابتدا رضایت مستقل تحلیل ابری را ثبت کنید."); return; }
             setAiBusy(true);
-            void requestAiSuggestions({ provider: aiProvider, apiKey: aiKey, segments: active.segments })
+            void requestAiSuggestions({ provider: aiProvider, apiKey: aiKey, consentGranted: active.cloudAiConsent, segments: active.segments })
               .then((result) => setAiResult(result))
               .catch((error: unknown) => setAiError(error instanceof Error ? error.message : "تحلیل انجام نشد."))
               .finally(() => { setAiKey(""); setAiBusy(false); });
@@ -988,7 +989,7 @@ function SummaryScreen() {
       </Panel>
       <Panel>
         <h2 className="font-medium">خطوط قرمز و دروازه بالینی</h2>
-        <p className="mt-1 text-sm text-muted">فهرست زیر از ابرپرامپت است و ممکن است PDF مورد بیشتری داشته باشد. از صوت استنباط نمی‌شود.</p>
+        <p className="mt-1 text-sm text-muted">خطوط قرمز مطابق شیوه‌نامه ۱۴۰۵ ثبت می‌شوند؛ از صوت یا تحلیل احساسات مدل استنباط نمی‌شوند.</p>
         {result.redLines.length ? (
           <ul className="mt-2 list-disc pe-4 text-sm leading-normal text-danger">
             {result.redLines.map((line) => (
@@ -1034,21 +1035,26 @@ function DeductionEditor() {
   function set<K extends keyof typeof deduction>(key: K, value: (typeof deduction)[K]) {
     patchActive((file) => ({ ...file, deduction: { ...file.deduction, [key]: value } }));
   }
+  function setUrgentDimension(key: "urgentEmotion" | "urgentCraving", value: 0 | 1 | 2) {
+    patchActive((file) => {
+      const next = { ...file.deduction, [key]: value };
+      const emotion = key === "urgentEmotion" ? value : (file.deduction.urgentEmotion ?? 0);
+      const craving = key === "urgentCraving" ? value : (file.deduction.urgentCraving ?? 0);
+      return { ...file, deduction: { ...next, requested: emotion + craving } };
+    });
+  }
   return (
     <Panel>
       <h2 className="font-medium">تعدیل رفتاری</h2>
       <p className="mt-1 text-sm leading-normal text-muted">
-        سقف مصاحبه کامل ۸ است. زبان بدن از صوت استنباط نمی‌شود. نسخه فوری تا اعلام سقف سند، کسر نمی‌گیرد.
+        مصاحبه کامل حداکثر ۸- امتیاز دارد. نسخه فوری فقط دو محور دارد: آرامش/تنظیم هیجان تا ۲- و فوریت رهایی/ولع تا ۲- (جمع حداکثر ۴-). مشاهده منفرد یا زبان بدن به‌تنهایی مجوز کسر نیست.
       </p>
-      <label className="mt-2 block text-sm text-muted">کسر درخواستی</label>
-      <input
-        type="number"
-        min={0}
-        max={8}
-        value={deduction.requested}
-        onChange={(event) => set("requested", Number(event.target.value))}
-        className="mt-1 h-12 w-full rounded-sm border border-line bg-bg px-3"
-      />
+      {active.kind === "urgent" ? <div className="mt-2 flex flex-col gap-3">
+        <div><label className="block text-sm text-muted">آرامش و تنظیم هیجان (۰ تا ۲-)</label><div className="mt-1 grid grid-cols-3 gap-2">{([0, 1, 2] as const).map((value) => <Btn key={value} tone={(deduction.urgentEmotion ?? 0) === value ? "primary" : "ghost"} onClick={() => setUrgentDimension("urgentEmotion", value)}>{faNum(value)}</Btn>)}</div></div>
+        <div><label className="block text-sm text-muted">فوریت رهایی یا نشانه ولع (۰ تا ۲-)</label><div className="mt-1 grid grid-cols-3 gap-2">{([0, 1, 2] as const).map((value) => <Btn key={value} tone={(deduction.urgentCraving ?? 0) === value ? "primary" : "ghost"} onClick={() => setUrgentDimension("urgentCraving", value)}>{faNum(value)}</Btn>)}</div></div>
+        <p className="text-sm">جمع کسر نسخه فوری: {faNum((deduction.urgentEmotion ?? 0) + (deduction.urgentCraving ?? 0))} از ۴</p>
+      </div> : <><label className="mt-2 block text-sm text-muted">کسر درخواستی، حداکثر ۸</label>
+      <input type="number" min={0} max={8} value={deduction.requested} onChange={(event) => set("requested", Number(event.target.value))} className="mt-1 h-12 w-full rounded-sm border border-line bg-bg px-3" /></>
       <div className="mt-2 flex flex-col gap-2">
         <Area label="شاهد توصیفی" value={deduction.evidence} onChange={(event) => set("evidence", event.target.value)} />
         <Area label="زمان و زمینه" value={deduction.contextTime} onChange={(event) => set("contextTime", event.target.value)} />
@@ -1173,7 +1179,7 @@ function ReportScreen() {
           <div>رضایت: {active.consentRecorded && active.consentExplained ? "ثبت شده" : "ناکامل"}{active.consentRefused ? " · ضبط رد شده" : ""}</div>
           <div>نوع: {active.kind === "full" ? "مصاحبه کامل" : "نسخه فوری"}</div>
           {active.kind === "urgent" ? <div>علت نسخه فوری: {active.urgentReason || "ثبت نشده"}</div> : null}
-          <div>نسخه قواعد: {RULES_META.version} · PDF رسمی در این ساخت تطبیق نشده</div>
+          <div>نسخه قواعد: {RULES_META.version} · معیارهای امتیاز از صفحات ۸ تا ۱۱ شیوه‌نامه ۱۴۰۵</div>
         </dl>
         <p className="mt-3 text-base">
           خام {faNum(result.raw)} از {faNum(result.maxRaw)} · کسر {faNum(result.deductionApplied)} · خالص {faNum(result.net)}
@@ -1208,7 +1214,7 @@ function ReportScreen() {
                   <td className="border border-line p-2">{question?.text}</td>
                   <td className="border border-line p-2 whitespace-pre-wrap">{answer?.evidenceText || "—"}</td>
                   <td className="border border-line p-2">{answer?.expertScore === null || answer?.expertScore === undefined ? "—" : faNum(answer.expertScore)}</td>
-                  <td className="border border-line p-2">غیرفعال تا ورود rubrics</td>
+                  <td className="border border-line p-2">هوش مصنوعی امتیاز نمی‌دهد؛ معیار رسمی و تأیید کارشناس ملاک است</td>
                   <td className="border border-line p-2">{answer ? statusLabel(answer.status) : "—"}</td>
                   <td className="border border-line p-2">{answer?.note || "—"}</td>
                 </tr>
@@ -1258,6 +1264,16 @@ function SettingsScreen() {
       <Field label="عنوان سازمان در سربرگ" value={state.settings.orgTitle} onChange={(orgTitle) => patchSettings({ orgTitle })} />
       <Field label="عنوان واحد" value={state.settings.deptTitle} onChange={(deptTitle) => patchSettings({ deptTitle })} />
       <Field label="مرکز پیش‌فرض" value={state.settings.centerDefault} onChange={(centerDefault) => patchSettings({ centerDefault })} />
+      <CheckRow checked={state.settings.biometricEnabled} onChange={(enabled) => {
+        if (!enabled) { patchSettings({ biometricEnabled: false }); return; }
+        void (async () => {
+          const available = await biometricAvailable();
+          if (!available) { window.alert("اثر انگشت در این دستگاه/نسخه APK در دسترس نیست. ابتدا نسخه بومی دارای افزونه را نصب و قفل صفحه را تنظیم کنید."); return; }
+          const ok = await authenticateBiometric();
+          if (ok) patchSettings({ biometricEnabled: true });
+          else window.alert("احراز هویت ناموفق بود؛ ورود با رمز همچنان فعال است.");
+        })().catch(() => window.alert("افزونه اثرانگشت بومی در دسترس نیست؛ تنظیم فعال نشد."));
+      }} label="فعال‌سازی ورود اثرانگشتی (پس از آزمون موفق سیستم‌عامل)" />
       <label className="block text-sm text-muted">قفل خودکار</label>
       <div className="grid grid-cols-4 gap-2">
         {[1, 5, 15, 0].map((minutes) => (
