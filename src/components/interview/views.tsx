@@ -1426,7 +1426,7 @@ async function exportPdfToPublicFolder() {
 }
 
 function SettingsScreen() {
-  const { state, patchSettings, wipeAll, removeActive, active } = useInterview();
+  const { state, patchSettings, wipeAll, removeActive, active, lock } = useInterview();
   const [pinOpen, setPinOpen] = useState<null | "wipe" | "delete" | "phrase">(null);
   const [phrase, setPhrase] = useState(state.settings.endPhrase);
   const [settingsProvider, setSettingsProvider] = useState<AiProvider>(state.settings.aiProvider ?? "groq");
@@ -1438,6 +1438,7 @@ function SettingsScreen() {
       <Field label="عنوان سازمان در سربرگ" value={state.settings.orgTitle} onChange={(orgTitle) => patchSettings({ orgTitle })} />
       <Field label="عنوان واحد" value={state.settings.deptTitle} onChange={(deptTitle) => patchSettings({ deptTitle })} />
       <Field label="مرکز پیش‌فرض" value={state.settings.centerDefault} onChange={(centerDefault) => patchSettings({ centerDefault })} />
+      <CheckRow checked={state.settings.requirePinOnLaunch ?? true} onChange={(requirePinOnLaunch) => { patchSettings({ requirePinOnLaunch }); if (requirePinOnLaunch) lock(); }} label="رمز هنگام شروع برنامه" />
       <Panel>
         <h2 className="font-medium">هوش مصنوعی</h2>
         <label className="mb-1 block text-sm">ارائه‌دهنده تحلیل متن</label>
