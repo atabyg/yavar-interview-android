@@ -9,7 +9,7 @@ const Sw = ({ on, set, label }) => <button className={"sw " + (on ? "on" : "")} 
 const PROVIDERS = {
   openai: { label: "OpenAI", models: ["gpt-4o-mini", "gpt-4.1-mini"], defaultModel: "gpt-4o-mini" },
   groq: { label: "Groq", models: ["openai/gpt-oss-20b", "llama-3.3-70b-versatile"], defaultModel: "openai/gpt-oss-20b" },
-  gemini: { label: "Google Gemini", models: ["gemini-3.8-flash", "gemini-3.6-flash"], defaultModel: "gemini-3.8-flash" },
+  gemini: { label: "Google Gemini", models: ["gemini-2.5-flash", "gemini-2.5-flash-lite"], defaultModel: "gemini-2.5-flash" },
   mistral: { label: "Mistral", models: ["mistral-small-latest"], defaultModel: "mistral-small-latest" }
 };
 const KEY_PROVIDERS = ["openai", "groq", "gemini", "mistral"];
@@ -21,6 +21,7 @@ export default function Settings({ storage, onChange }) {
   const [key, setKey] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [modelLists, setModelLists] = useState({});
   useEffect(() => setS(getSettings()), []);
   const upd = async (patch) => {
     const n = await saveSettings(patch);
@@ -31,17 +32,33 @@ export default function Settings({ storage, onChange }) {
   const selectedKey = keys[keyProvider] || (keyProvider === "openai" ? s.apiKey : "") || "";
   const masked = selectedKey ? selectedKey.slice(0, 5) + "••••••••" + selectedKey.slice(-3) : "";
 
+  function preferredModel(provider, models) {
+    const preferred = {
+      openai: ["gpt-4o-mini", "gpt-4.1-mini"],
+      groq: ["openai/gpt-oss-20b", "llama-3.3-70b-versatile"],
+      gemini: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
+      mistral: ["mistral-small-latest"]
+    };
+    return (preferred[provider] || []).find((id) => models.includes(id)) || models[0] || PROVIDERS[provider].defaultModel;
+  }
+
   async function saveKey() {
     const k = key.trim();
-    if (k.length < 12 || /\s/.test(k)) { toast("کلید API ناقص یا دارای فاصله است."); return; }
+    if (k.length < 12 || /\\s/.test(k)) { toast("کلید API ناقص یا دارای فاصله است."); return; }
     setBusy(true);
     try {
-      await testProviderKey(keyProvider, k);
+      const models = await testProviderKey(keyProvider, k);
       await upd({ apiKeys: { ...keys, [keyProvider]: k } });
+      if (models.length) {
+        setModelLists((prev) => ({ ...prev, [keyProvider]: models }));
+        if (keyProvider === s.analyzeProvider && !models.includes(s.analyzeModel)) {
+          await upd({ analyzeModel: preferredModel(keyProvider, models) });
+        }
+      }
       setKey("");
-      toast("اتصال بررسی شد و کلید در حافظهٔ محلی ذخیره شد.");
+      toast(models.length ? "اتصال برقرار شد؛ مدل‌های قابل‌دسترسی دریافت و کلید ذخیره شد." : "کلید پذیرفته شد؛ فهرست مدل‌ها از سرویس دریافت نشد.");
     } catch (e) {
-      toast("کلید ذخیره نشد: " + friendly(e));
+      toast("اتصال تأیید نشد و کلید ذخیره نشد: " + friendly(e));
     } finally { setBusy(false); }
   }
   async function delKey() {
@@ -51,8 +68,16 @@ export default function Settings({ storage, onChange }) {
     }
   }
   async function changeAnalyzeProvider(provider) {
-    const m = PROVIDERS[provider].defaultModel;
-    await upd({ analyzeProvider: provider, analyzeModel: m });
+    let models = modelLists[provider] || [];
+    const providerKey = keys[provider] || (provider === "openai" ? s.apiKey : "");
+    if (!models.length && providerKey) {
+      try {
+        models = await testProviderKey(provider, providerKey);
+        if (models.length) setModelLists((prev) => ({ ...prev, [provider]: models }));
+      } catch (e) { /* Keep the selection usable; the connection test reports provider errors. */ }
+    }
+    const options = models.length ? models : PROVIDERS[provider].models;
+    await upd({ analyzeProvider: provider, analyzeModel: preferredModel(provider, options) });
   }
   async function changeTranscribeProvider(provider) {
     await upd({ transcribeProvider: provider, transcribeModel: provider === "offline" ? "offline-speech-recognizer" : modelForTranscription(provider) });
@@ -70,7 +95,7 @@ export default function Settings({ storage, onChange }) {
         </select>
         <div className="mut" style={{ margin: "8px 0 4px" }}>مدل تحلیل</div>
         <select className="inp" value={s.analyzeModel} onChange={(e) => upd({ analyzeModel: e.target.value })}>
-          {(PROVIDERS[s.analyzeProvider] || PROVIDERS.groq).models.map((m) => <option value={m} key={m}>{m}</option>)}
+          {(modelLists[s.analyzeProvider]?.length ? modelLists[s.analyzeProvider] : (PROVIDERS[s.analyzeProvider] || PROVIDERS.groq).models).map((m) => <option value={m} key={m}>{m}</option>)}
         </select>
         <div className="mut" style={{ marginTop: 8, lineHeight: 1.8 }}>کلید سرویس تحلیل و کلید تبدیل صوت جدا هستند. سهمیهٔ رایگان ممکن است با کشور، حساب، مدل و زمان تغییر کند و تضمین‌شده نیست.</div>
       </div>
