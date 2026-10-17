@@ -1039,7 +1039,7 @@ function DeductionEditor() {
         <div><label className="block text-sm text-muted">فوریت رهایی یا نشانه ولع (۰ تا ۲-)</label><div className="mt-1 grid grid-cols-3 gap-2">{([0, 1, 2] as const).map((value) => <Btn key={value} tone={(deduction.urgentCraving ?? 0) === value ? "primary" : "ghost"} onClick={() => setUrgentDimension("urgentCraving", value)}>{faNum(value)}</Btn>)}</div></div>
         <p className="text-sm">جمع کسر نسخه فوری: {faNum((deduction.urgentEmotion ?? 0) + (deduction.urgentCraving ?? 0))} از ۴</p>
       </div> : <><label className="mt-2 block text-sm text-muted">کسر درخواستی، حداکثر ۸</label>
-      <input type="number" min={0} max={8} value={deduction.requested} onChange={(event) => set("requested", Number(event.target.value))} className="mt-1 h-12 w-full rounded-sm border border-line bg-bg px-3" /></>
+      <input type="number" min={0} max={8} value={deduction.requested} onChange={(event) => set("requested", Number(event.target.value))} className="mt-1 h-12 w-full rounded-sm border border-line bg-bg px-3" /></>}
       <div className="mt-2 flex flex-col gap-2">
         <Area label="شاهد توصیفی" value={deduction.evidence} onChange={(event) => set("evidence", event.target.value)} />
         <Area label="زمان و زمینه" value={deduction.contextTime} onChange={(event) => set("contextTime", event.target.value)} />
