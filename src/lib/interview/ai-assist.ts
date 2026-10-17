@@ -30,10 +30,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * Checks the OpenAI API key without sending case data or transcript content.
- * The key is supplied by the user and must never be persisted by this helper.
- */
 /** Tests OpenAI connectivity using a fixed prompt and no case content. */
 export async function testAiConnection(apiKeyInput: string, signal?: AbortSignal): Promise<string> {
   const apiKey = apiKeyInput.trim();
@@ -201,7 +197,7 @@ export async function suggestTranscriptSpeakersWithOpenAI(args: {
   segments: Segment[];
 }): Promise<SpeakerRoleSuggestion[]> {
   const apiKey = args.apiKey.trim();
-  if (!apiKey) throw new Error("کلید API در تنظیمات وارد نشده است.");
+  if (!apiKey) throw new Error("کلید OpenAI API در تنظیمات وارد نشده است.");
   if (!args.segments.length) return [];
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60_000);
@@ -265,7 +261,7 @@ export interface AudioTranscriptChunk {
 /**
  * Transcribe a locally-recorded audio blob using OpenAI's Whisper endpoint.
  * Requires case-specific consent in the UI and a session-only API key.
- * OpenAI documents WebM uploads and a 25 MB free-tier upload limit.
+ * OpenAI's transcription endpoint accepts WebM and enforces a file-size limit.
  */
 export async function transcribeAudioWithOpenAI(args: {
   apiKey: string;
@@ -276,13 +272,13 @@ export async function transcribeAudioWithOpenAI(args: {
   if (!apiKey) throw new Error("کلید API در تنظیمات وارد نشده است.");
   if (!args.audio.size) throw new Error("فایل صوتی خالی است.");
   if (args.audio.size > 25 * 1024 * 1024) {
-    throw new Error("حجم صوت بیشتر از سقف ۲۵ مگابایت سرویس رایگان است؛ فایل در دستگاه ذخیره شد، اما تبدیل ابری انجام نشد.");
+    throw new Error("حجم صوت بیشتر از سقف ۲۵ مگابایت سرویس است؛ فایل در دستگاه ذخیره شد، اما تبدیل ابری انجام نشد.");
   }
   const form = new FormData();
   form.append("file", args.audio, "yavar-interview.webm");
-  form.append("model", "gpt-4o-mini-transcribe");
+  form.append("model", "whisper-1");
   form.append("language", "fa");
-  form.append("response_format", "json");
+  form.append("response_format", "verbose_json");
   form.append("temperature", "0");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 90_000);
@@ -366,7 +362,7 @@ export async function suggestCaseMetadataWithAi(args: {
 }): Promise<AiCaseMetadataSuggestion> {
   const apiKey = args.apiKey.trim();
   if (!args.consentGranted) throw new Error("رضایت ارسال ابری این پرونده ثبت نشده است.");
-  if (!apiKey) throw new Error("کلید API ارائه‌دهنده انتخاب‌شده وارد نشده است.");
+  if (!apiKey) throw new Error("کلید OpenAI API در تنظیمات وارد نشده است.");
   const transcript = args.segments.map((s) => ({ speaker: s.speaker, text: s.textRaw }));
   if (!transcript.some((s) => s.text.trim())) throw new Error("متن گفتگو برای استخراج مشخصات موجود نیست.");
   const endpoint = "https://api.openai.com/v1/chat/completions";
