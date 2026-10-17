@@ -1099,11 +1099,14 @@ function QuestionsScreen() {
           <CheckRow checked={active.cloudAiConsent} onChange={(cloudAiConsent) => patchActive((file) => withAudit({ ...file, cloudAiConsent }, "ai_cloud_consent", cloudAiConsent ? "granted" : "revoked"), false)} label="پس از توضیح پیام بالا، برای ارسال متن قطعه‌های منتسب به مددجو به سرویس ابری رضایت می‌دهم." />
           <label className="block text-sm text-muted">ارائه‌دهنده</label>
           <select className="min-h-12 w-full rounded-sm border border-line bg-surface px-3" value={aiProvider} onChange={(event) => { const provider = event.target.value as AiProvider; setAiProvider(provider); setAiKey(getSessionAiApiKey(provider)); }}>
-            <option value="groq">Groq API · Whisper + GPT OSS</option>
-            <option value="deepseek">DeepSeek API · deepseek-chat</option>
-            <option value="openai">OpenAI API</option>
+            <option value="groq">Groq · رونویسی صوت + متن</option>
+            <option value="deepseek">DeepSeek · متن</option>
+            <option value="openai">OpenAI · متن</option>
+            <option value="openrouter">OpenRouter · مدل‌های متغیر/رایگان</option>
+            <option value="mistral">Mistral · متن</option>
+            <option value="cerebras">Cerebras · متن</option>
           </select>
-          <Field label="کلید API (نمایش آشکار؛ فقط در حافظه این اجرا)" type="text" value={aiKey} onChange={setAiKey} />
+          <Field label="کلید API (فقط در حافظه این اجرا)" type="password" value={aiKey} onChange={setAiKey} />
           <Btn tone="primary" disabled={!active.cloudAiConsent || !aiKey.trim() || aiBusy || active.segments.every((s) => s.speaker !== "client")} onClick={() => {
             setAiError("");
             if (!active.cloudAiConsent) { setAiError("ابتدا رضایت مستقل تحلیل ابری را ثبت کنید."); return; }
