@@ -470,7 +470,7 @@ function ReadyScreen() {
 }
 
 function RecordScreen() {
-  const { active, patchActive, state, go } = useInterview();
+  const { active, patchActive, patchCase, state, go } = useInterview();
   const [phase, setPhase] = useState<"idle" | "rec" | "paused">("idle");
   const [seconds, setSeconds] = useState(active?.recordingSeconds ?? 0);
   const [level, setLevel] = useState(0);
@@ -480,12 +480,12 @@ function RecordScreen() {
   const [endMode, setEndMode] = useState<null | "touch" | "phrase">(null);
   const [phrase, setPhrase] = useState("");
   const [battery, setBattery] = useState("");
-  const [speechOptIn, setSpeechOptIn] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState("");
   const secondsRef = useRef(seconds);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
-  const asrRef = useRef<{ stop: () => void } | null>(null);
   secondsRef.current = seconds;
 
   useEffect(() => {
@@ -493,10 +493,7 @@ function RecordScreen() {
     void batteryApi.getBattery?.().then((info) => {
       setBattery(`باتری ${faNum(Math.round(info.level * 100))} درصد${info.charging ? "، در حال شارژ" : ""}`);
     });
-    return () => {
-      asrRef.current?.stop();
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-    };
+    return () => streamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
 
   useEffect(() => {
@@ -512,8 +509,8 @@ function RecordScreen() {
 
   async function start() {
     setError("");
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError("این مرورگر ضبط صوت را پشتیبانی نمی‌کند.");
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("این نسخه اندروید ضبط صوت را پشتیبانی نمی‌کند.");
       return;
     }
     try {
@@ -529,10 +526,10 @@ function RecordScreen() {
       };
       recorder.start(1000);
       recRef.current = recorder;
+      setSeconds(0);
       setPhase("rec");
-      if (speechOptIn) startBrowserSpeech();
       patchActive(
-        (file) => withAudit({ ...file, status: file.status === "draft" ? "recording" : file.status }, "recording_start", "touch"),
+        (file) => withAudit({ ...file, status: file.status === "draft" ? "recording" : file.status, autoProcessingNote: undefined }, "recording_start", "touch"),
         false,
       );
       const context = new AudioContext();
@@ -554,7 +551,10 @@ function RecordScreen() {
         setClipping(peak > 120);
         setSilence((prev) => (percent < 6 ? prev + 0.2 : 0));
       }, 200);
-      recorder.addEventListener("stop", () => window.clearInterval(meter), { once: true });
+      recorder.addEventListener("stop", () => {
+        window.clearInterval(meter);
+        void context.close().catch(() => undefined);
+      }, { once: true });
     } catch {
       setError("اجازه میکروفون داده نشد یا دستگاه در دسترس نیست.");
     }
@@ -562,169 +562,187 @@ function RecordScreen() {
 
   function finish() {
     const recorder = recRef.current;
-    asrRef.current?.stop();
+    if (processing) return;
     if (!recorder || recorder.state === "inactive") {
       setPhase("idle");
       setEndMode(null);
       setPhrase("");
       return;
     }
+    const caseId = active.id;
+    const elapsed = secondsRef.current;
+    setProcessing(true);
+    setProcessingMessage("در حال ذخیره امن صوت در همین دستگاه…");
+    setError("");
+    asrCleanup();
     recorder.onstop = () => {
       const blob = new Blob(chunks.current, { type: recorder.mimeType || "audio/webm" });
-      const elapsed = secondsRef.current;
-      const caseId = active?.id;
       streamRef.current?.getTracks().forEach((track) => track.stop());
-      if (!caseId) return;
-      void saveAudio(caseId, blob).then(() => {
-        patchActive(
-          (file) =>
-            withAudit(
-              { ...file, audioStored: blob.size > 0, recordingSeconds: elapsed, status: "review" },
-              "recording_end",
-              `${elapsed}s`,
-            ),
-          false,
-        );
-        go("transcript");
-      }).catch(() => setError("ذخیره محلی صوت ناموفق بود؛ گزارش نهایی را تا بررسی وضعیت فایل قطعی نکنید."));
-      setPhase("idle");
-      setEndMode(null);
-      setPhrase("");
+      void (async () => {
+        try {
+          await saveAudio(caseId, blob);
+          const cloudApproved = active.cloudAsrConsent && active.cloudAiConsent;
+          const sessionKey = getSessionAiApiKey();
+          patchCase(caseId, (file) => withAudit({
+            ...file,
+            audioStored: blob.size > 0,
+            recordingSeconds: elapsed,
+            status: "review",
+            autoProcessingNote: cloudApproved && sessionKey
+              ? "صوت در دستگاه ذخیره شد؛ پردازش خودکار ابری آغاز می‌شود."
+              : "صوت در دستگاه ذخیره شد. برای تبدیل گفتار و پیشنهاد هوش مصنوعی، کلید Groq را در تنظیمات وارد و رضایت این پرونده را فعال کنید.",
+          }, "recording_end", `${elapsed}s`), false);
+
+          if (cloudApproved && sessionKey) {
+            setProcessingMessage("در حال تبدیل صوت فارسی به متن…");
+            const chunksFromModel = await transcribeAudioWithGroq({ apiKey: sessionKey, audio: blob });
+            const newSegments: Segment[] = chunksFromModel.map((chunk) => {
+              const raw: Segment = {
+                id: crypto.randomUUID(),
+                speaker: "overlap",
+                textRaw: chunk.text,
+                startSec: chunk.startSec,
+                endSec: chunk.endSec,
+                confidence: null,
+                origin: "browser_speech",
+              };
+              const review = reviewSegment(raw);
+              const suggestedRole = review.speakerConfidence >= 0.52 ? review.suggestedSpeaker : "overlap";
+              return {
+                ...raw,
+                speaker: suggestedRole,
+                questionId: review.questionId ?? undefined,
+                speakerConfidence: review.speakerConfidence,
+                speakerSuggested: review.suggestedSpeaker,
+              };
+            });
+            const allSegments = [...active.segments, ...newSegments];
+            patchCase(caseId, (file) => withAudit({
+              ...file,
+              segments: [...file.segments, ...newSegments],
+              autoProcessingNote: "تبدیل گفتار به متن انجام شد؛ تشخیص گوینده احتمالی است و باید توسط کارشناس بازبینی شود.",
+            }, "asr_auto_complete", `${newSegments.length} segments`), false);
+
+            if (allSegments.some((segment) => segment.speaker === "client")) {
+              setProcessingMessage("در حال ساخت پیشنهادهای هوش مصنوعی از متن…");
+              const result = await requestAiSuggestions({
+                provider: "groq",
+                apiKey: sessionKey,
+                consentGranted: active.cloudAiConsent,
+                segments: allSegments,
+              });
+              patchCase(caseId, (file) => {
+                const answers = { ...file.answers };
+                for (const suggestion of result.suggestions) {
+                  const current = answers[suggestion.questionId];
+                  if (!current) continue;
+                  answers[suggestion.questionId] = {
+                    ...current,
+                    aiSuggestion: {
+                      evidenceText: suggestion.evidenceText,
+                      segmentIds: suggestion.segmentIds,
+                      status: suggestion.status,
+                      rationale: suggestion.rationale,
+                      generatedAt: new Date().toISOString(),
+                      model: result.model,
+                    },
+                  };
+                }
+                return withAudit({
+                  ...file,
+                  answers,
+                  autoProcessingNote: `پردازش خودکار پایان یافت؛ ${result.suggestions.length} پیشنهاد ثبت شد. متن و نقش گوینده نیازمند بازبینی است؛ هیچ امتیاز رسمی تغییر نکرد.`,
+                }, "ai_auto_complete", `${result.suggestions.length} suggestions`);
+              }, false);
+            } else {
+              patchCase(caseId, (file) => ({
+                ...file,
+                autoProcessingNote: "متن صوت ساخته شد، اما نقش گوینده در قطعه‌ها مبهم بود؛ برای جلوگیری از انتساب اشتباه، پیشنهاد پاسخ خودکار ساخته نشد. نقش‌ها را دستی بازبینی کنید.",
+              }), false);
+            }
+          }
+        } catch (reason) {
+          const message = reason instanceof Error ? reason.message : "پردازش خودکار انجام نشد.";
+          patchCase(caseId, (file) => withAudit({
+            ...file,
+            status: "review",
+            autoProcessingNote: `صوت اصلی در دستگاه ذخیره شده، اما پردازش خودکار ناموفق بود: ${message}`,
+          }, "auto_ai_failed", message), false);
+        } finally {
+          setProcessing(false);
+          setProcessingMessage("");
+          setPhase("idle");
+          setEndMode(null);
+          setPhrase("");
+          go("transcript");
+        }
+      })();
     };
     recorder.stop();
   }
 
-  function startBrowserSpeech() {
-    const host = window as Window & { SpeechRecognition?: new () => SpeechEngine; webkitSpeechRecognition?: new () => SpeechEngine };
-    const Ctor = host.SpeechRecognition ?? host.webkitSpeechRecognition;
-    if (!Ctor) {
-      setError("تشخیص گفتار در این مرورگر نیست.");
-      return;
-    }
-    const engine = new Ctor();
-    engine.lang = "fa-IR";
-    engine.continuous = true;
-    engine.interimResults = false;
-    engine.onresult = (event) => {
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        if (!result?.isFinal) continue;
-        const text = result[0]?.transcript?.trim() ?? "";
-        const confidence = typeof result[0]?.confidence === "number" && result[0].confidence > 0 ? result[0].confidence : null;
-        if (!text) continue;
-        const rawSegment: Segment = {
-          id: crypto.randomUUID(),
-          speaker: "overlap",
-          textRaw: text,
-          startSec: null,
-          endSec: null,
-          confidence,
-          origin: "browser_speech",
-        };
-        const review = reviewSegment(rawSegment);
-        const segment: Segment = {
-          ...rawSegment,
-          speaker: review.suggestedSpeaker === "interviewer" && review.speakerConfidence >= 0.7 ? "interviewer" : "overlap",
-          questionId: review.questionId ?? undefined,
-          speakerConfidence: review.speakerConfidence,
-          speakerSuggested: review.suggestedSpeaker,
-        };
-        patchActive((file) => ({ ...file, segments: [...file.segments, segment] }), true);
-      }
-    };
-    engine.onerror = () => setError("تشخیص گفتار مرورگر متوقف شد.");
-    engine.start();
-    asrRef.current = engine;
+  function asrCleanup() {
+    // Audio capture is finalized by MediaRecorder; speech processing starts after the local write completes.
   }
 
   return (
     <div className="flex flex-col gap-3 py-4">
-      <h1 className="text-xl font-medium">ضبط جلسه</h1>
-      {!canRecord ? <Banner tone="warn">ضبط تا رضایت، یا به‌دلیل مخالفت با ضبط، ممکن نیست.</Banner> : null}
+      <h1 className="text-xl font-medium">ضبط مصاحبه</h1>
+      {!canRecord ? <Banner tone="warn">ضبط تا ثبت رضایت و توضیح آن، یا به‌دلیل مخالفت مددجو، ممکن نیست.</Banner> : null}
+      {processing ? <Banner>{processingMessage || "در حال پردازش…"}</Banner> : null}
       <Panel>
         <div className="flex items-center justify-between gap-3">
           <p className="text-3xl font-medium tabular-nums">{clock(seconds)}</p>
           <p className="text-sm">
             {phase === "rec" ? <span className="rec-dot me-2 inline-block size-2 rounded-full bg-danger" /> : null}
-            {phase === "rec" ? "در حال ضبط" : phase === "paused" ? "مکث" : "متوقف"}
+            {processing ? "در حال تحلیل" : phase === "rec" ? "در حال ضبط" : phase === "paused" ? "مکث" : "متوقف"}
           </p>
         </div>
         <p className="mt-2 text-sm text-muted">سطح صدا: {faNum(level)} درصد. {clipping ? "احتمال برش صدا." : "برش صدا دیده نشد."}</p>
         <p className="text-sm text-muted">{silence > 8 ? `سکوت حدود ${faNum(Math.round(silence))} ثانیه.` : "سکوت طولانی دیده نشد."}</p>
         {battery ? <p className="text-sm text-muted">{battery}</p> : null}
-        {active.audioStored ? <p className="text-sm">یک فایل صوتی قبلی برای این پرونده ذخیره شده و با پایان ضبط تازه جایگزین می‌شود.</p> : null}
+        {active.audioStored ? <p className="text-sm">فایل صوتی قبلی با پایان ضبط تازه جایگزین می‌شود.</p> : null}
       </Panel>
       {error ? <Banner tone="danger">{error}</Banner> : null}
       <div className="grid grid-cols-2 gap-2">
         {phase === "idle" ? (
-          <Btn tone="primary" disabled={!canRecord} onClick={() => void start()}>
-            <Mic className="size-4" aria-hidden /> شروع
+          <Btn tone="primary" disabled={!canRecord || processing} onClick={() => void start()}>
+            <Mic className="size-4" aria-hidden /> شروع ضبط
           </Btn>
         ) : (
-          <Btn
-            onClick={() => {
-              const recorder = recRef.current;
-              if (!recorder || typeof recorder.pause !== "function") return;
-              if (phase === "rec") {
-                recorder.pause();
-                setPhase("paused");
-              } else {
-                recorder.resume();
-                setPhase("rec");
-              }
-            }}
-          >
+          <Btn disabled={processing} onClick={() => {
+            const recorder = recRef.current;
+            if (!recorder || typeof recorder.pause !== "function") return;
+            if (phase === "rec") {
+              recorder.pause();
+              setPhase("paused");
+            } else {
+              recorder.resume();
+              setPhase("rec");
+            }
+          }}>
             {phase === "paused" ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
-            {phase === "paused" ? "ادامه" : "مکث"}
+            {phase === "paused" ? "ادامه ضبط" : "مکث"}
           </Btn>
         )}
-        <Btn tone="danger" onClick={() => setEndMode("touch")} disabled={phase === "idle" && !active.audioStored}>
-          <Square className="size-4" aria-hidden /> پایان لمسی
+        <Btn tone="danger" disabled={processing || (phase === "idle" && !active.audioStored)} onClick={() => setEndMode("touch")}>
+          <Square className="size-4" aria-hidden /> پایان ضبط
         </Btn>
       </div>
-      {state.settings.endPhrase ? (
-        <Btn onClick={() => setEndMode("phrase")} disabled={phase === "idle"}>
-          پایان با عبارت
-        </Btn>
-      ) : (
-        <p className="text-sm text-muted">عبارت پایان در تنظیمات خالی است. پایان لمسی همیشه در دسترس است.</p>
-      )}
-      <Panel>
-        <h2 className="font-medium">تحلیل زنده متن — نسخه آزمایشی</h2>
-        <CheckRow checked={speechOptIn} onChange={setSpeechOptIn} label="فعال‌سازی تشخیص گفتار مرورگر برای این جلسه (ممکن است صدا/متن به سرویس بیرونی ارسال شود؛ فقط با مجوز سازمان و رضایت آگاهانه فعال کنید)." />
-        <p className="mt-1 text-sm leading-normal text-muted">به‌صورت پیش‌فرض خاموش است. اگر فعال شود، متن تشخیص‌داده‌شده به‌طور تقریبی به گوینده و سؤال مرتبط می‌شود؛ تشخیص نقش قطعی نیست و هیچ امتیاز یا پاسخ رسمی خودکار ثبت نمی‌شود. برای پردازش محرمانه، باید ASR کاملاً روی دستگاه نصب و آزموده شود.</p>
-        {phase === "rec" && liveMappedQuestions.length ? <div className="mt-2 rounded-sm border border-line p-2"><p className="font-medium">سؤال‌های شناسایی‌شده در متن (پیشنهادی)</p><ul className="mt-1 list-disc pe-4">{liveMappedQuestions.map(([id, item]) => <li key={id} className={item.hasClientEvidence ? "text-success" : "text-danger"}>{questionLabel(id)} — {item.hasClientEvidence ? "شاهد احتمالی مددجو؛ بازبینی لازم" : "سؤال/موضوع دیده شد، پاسخ مددجو هنوز تأیید نشده"}</li>)}</ul></div> : null}
-      </Panel>
-      <Btn onClick={() => go("transcript")}>رفتن به متن</Btn>
+      {phase !== "idle" ? (
+        <p className="text-sm text-muted">با پایان ضبط، فایل ابتدا روی گوشی ذخیره می‌شود. در صورت ثبت رضایت ابری و آماده بودن کلید Groq، تبدیل گفتار و پیشنهاد تحلیل به‌طور خودکار اجرا می‌شود.</p>
+      ) : null}
+      {phase === "rec" && liveMappedQuestions.length ? <Panel>
+        <h2 className="font-medium">موضوع‌های تشخیص‌داده‌شده (فقط پیشنهاد)</h2>
+        <ul className="mt-1 list-disc pe-4">{liveMappedQuestions.map(([id, item]) => <li key={id}>{questionLabel(id)} — {item.hasClientEvidence ? "شاهد احتمالی؛ بازبینی لازم" : "گوینده یا پاسخ نامشخص"}</li>)}</ul>
+      </Panel> : null}
+      <Btn disabled={processing} onClick={() => go("transcript")}>رفتن به متن</Btn>
       {endMode ? (
-        <Dialog title={endMode === "touch" ? "پایان ضبط؟" : "پایان با عبارت"}>
-          {endMode === "phrase" ? (
-            <Field label="عبارت پایان" value={phrase} onChange={setPhrase} type="password" />
-          ) : (
-            <p className="text-sm leading-normal">جلسه به‌صورت قابل‌بازیابی ذخیره می‌شود و خودش گزارش نهایی نمی‌سازد.</p>
-          )}
+        <Dialog title="پایان ضبط؟">
+          <p className="text-sm leading-normal">صوت روی دستگاه ذخیره و در صورت وجود رضایت و کلید API، تبدیل گفتار و پیشنهاد تحلیل اجرا می‌شود. امتیاز رسمی خودکار ثبت نمی‌شود.</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <Btn
-              onClick={() => {
-                setEndMode(null);
-                setPhrase("");
-              }}
-            >
-              انصراف
-            </Btn>
-            <Btn
-              tone="primary"
-              onClick={() => {
-                if (endMode === "phrase" && phrase !== state.settings.endPhrase) {
-                  setError("عبارت پایان درست نیست.");
-                  setPhrase("");
-                  return;
-                }
-                finish();
-              }}
-            >
-              تأیید پایان
-            </Btn>
+            <Btn onClick={() => setEndMode(null)}>ادامه مصاحبه</Btn>
+            <Btn tone="primary" onClick={finish}>پایان و پردازش</Btn>
           </div>
         </Dialog>
       ) : null}
