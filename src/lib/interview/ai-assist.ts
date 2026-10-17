@@ -86,7 +86,7 @@ export async function requestAiSuggestions(args: {
     : args.provider === "groq"
       ? "https://api.groq.com/openai/v1/chat/completions"
       : "https://api.openai.com/v1/chat/completions";
-  const model = args.provider === "deepseek" ? "deepseek-flash" : args.provider === "groq" ? "openai/gpt-oss-20b" : "gpt-4o-mini";
+  const model = args.provider === "deepseek" ? "deepseek-chat" : args.provider === "groq" ? "openai/gpt-oss-20b" : "gpt-4o-mini";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45_000);
   const onAbort = () => controller.abort();
