@@ -860,7 +860,7 @@ function QuestionsScreen() {
           <CheckRow checked={active.cloudAiConsent} onChange={(cloudAiConsent) => patchActive((file) => withAudit({ ...file, cloudAiConsent }, "ai_cloud_consent", cloudAiConsent ? "granted" : "revoked"), false)} label="پس از توضیح پیام بالا، برای ارسال متن قطعه‌های منتسب به مددجو به سرویس ابری رضایت می‌دهم." />
           <label className="block text-sm text-muted">ارائه‌دهنده</label>
           <select className="min-h-12 w-full rounded-sm border border-line bg-surface px-3" value={aiProvider} onChange={(event) => setAiProvider(event.target.value as AiProvider)}>
-            <option value="deepseek">DeepSeek API</option>
+            <option value="deepseek">DeepSeek API · deepseek-flash</option>
             <option value="openai">OpenAI API</option>
           </select>
           <Field label="کلید API (فقط برای همین درخواست؛ ذخیره نمی‌شود)" type="password" value={aiKey} onChange={setAiKey} />
@@ -875,7 +875,7 @@ function QuestionsScreen() {
           }}>{aiBusy ? "در حال دریافت پیشنهاد…" : "پیشنهاد ارتباط گفتگو با ۲۴ سؤال"}</Btn>
           {aiError ? <Banner tone="warn">{aiError}</Banner> : null}
           {aiResult ? <p className="text-sm">پیشنهادهای دریافتی: {faNum(aiResult.suggestions.length)} · مدل اعلام‌شده: {aiResult.model}. هیچ امتیاز یا تصمیمی خودکار تغییر نکرده است.</p> : null}
-          <p className="text-xs leading-normal text-muted">کلید API در حافظه همین نشست استفاده و پس از پاسخ پاک می‌شود؛ این به معنی رایگان بودن سرویس یا تأیید سیاست نگهداری آن نیست. تا تأیید سازمان از داده واقعی استفاده نکنید.</p>
+          <p className="text-xs leading-normal text-muted">کلید API در حافظه همین نشست استفاده و پس از پاسخ پاک می‌شود؛ سرویس API ممکن است هزینه توکنی داشته باشد و رایگان‌بودن تضمین نشده است. حساب ChatGPT به‌تنهایی کلید OpenAI API نمی‌دهد. سیاست نگهداری داده را بررسی کنید و تا تأیید سازمان از داده واقعی استفاده نکنید.</p>
         </Panel>
         {aiSuggestion ? <Panel>
           <h2 className="font-medium">پیشنهاد AI برای {questionLabel(question.id)} · نیازمند تأیید کارشناس</h2>
