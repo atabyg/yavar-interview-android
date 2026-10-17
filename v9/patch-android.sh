@@ -331,7 +331,8 @@ if repo_start and repo_start < cmake_path < text.find("\n}\n", repo_start.end())
     raise SystemExit("CMake configuration was incorrectly inserted inside repositories")
 
 open(path, "w", encoding="utf-8").write(text)
-PYgrep -q 'path "src/main/cpp/CMakeLists.txt"' "$GRADLE" || { echo "::error::CMake configuration missing"; exit 1; }
+PY
+grep -q 'path "src/main/cpp/CMakeLists.txt"' "$GRADLE" || { echo "::error::CMake configuration missing"; exit 1; }
 test -s "$NATIVE_DIR/whisper.cpp/CMakeLists.txt"
 test -s "$JAVA_NATIVE_DIR/OfflineWhisperPlugin.java"
 
