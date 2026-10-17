@@ -26,8 +26,10 @@ jobs:
       - name: Restore logo and generate icons
         run: |
           mkdir -p src/assets assets
-          base64 -d assets/logo.b64 > src/assets/logo.png
+          # If you upload a real src/assets/logo.png it is used as-is; otherwise rebuild it from the text chunks.
+          if [ ! -f src/assets/logo.png ]; then cat assets/logo/p?.txt | base64 -d > src/assets/logo.png; fi
           pip install pillow
+          python3 -c "from PIL import Image; im=Image.open('src/assets/logo.png'); im.load(); print('logo ok', im.size)"
           python3 make-icons.py
 
       - name: Install and build web app
