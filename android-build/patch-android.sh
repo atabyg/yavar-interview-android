@@ -185,12 +185,12 @@ public class NativeInterviewPlugin extends Plugin {
 JAVA
 sed -i "s/__PACKAGE__/$PKG/" "$JAVA_DIR/NativeInterviewPlugin.java"
 
-# Set V5 version metadata while preserving V4 applicationId for in-place Android upgrade.
+# Set V7 version metadata while preserving V4 applicationId for in-place Android upgrade.
 BUILD=android/app/build.gradle
-sed -E -i 's/versionCode[[:space:]]*=?[[:space:]]*[0-9]+/versionCode 5/' "$BUILD"
-sed -E -i 's/versionName[[:space:]]*=?[[:space:]]*"[^"]+"/versionName "5.0.0"/' "$BUILD"
+sed -E -i 's/versionCode[[:space:]]*=?[[:space:]]*[0-9]+/versionCode 7/' "$BUILD"
+sed -E -i 's/versionName[[:space:]]*=?[[:space:]]*"[^"]+"/versionName "7.0.0"/' "$BUILD"
 grep -q 'applicationId "com.yavarshahrha.interview.v4"' "$BUILD" || { echo "::error::Unexpected applicationId; must remain compatible with V4"; exit 1; }
-grep -q 'versionCode 5' "$BUILD" || { echo "::error::Could not set V5 versionCode"; exit 1; }
-grep -q 'versionName "5.0.0"' "$BUILD" || { echo "::error::Could not set V5 versionName"; exit 1; }
-echo "V5 package metadata:"
+grep -q 'versionCode 7' "$BUILD" || { echo "::error::Could not set V7 versionCode"; exit 1; }
+grep -q 'versionName "7.0.0"' "$BUILD" || { echo "::error::Could not set V7 versionName"; exit 1; }
+echo "V7 package metadata:"
 grep -E 'applicationId|versionCode|versionName|minSdkVersion' "$BUILD" android/variables.gradle || true

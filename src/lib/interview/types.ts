@@ -121,7 +121,7 @@ export interface Settings {
   endPhrase: string;
   allowBrowserSpeech: boolean;
   biometricEnabled: boolean;
-  aiProvider?: "deepseek" | "openai" | "groq" | "openrouter" | "mistral" | "cerebras";
+  aiProvider?: "openai";
   requirePinOnLaunch?: boolean;
 }
 

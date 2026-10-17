@@ -1,32 +1,10 @@
 /**
- * Provider API keys are kept only in JS memory for this app session.
- * They are never written to local storage, case files, exports, or the repository.
+ * The one OpenAI API key remains only in JS memory for this app session.
+ * It is never written to local storage, case files, exports, or the repository.
  */
-const sessionAiApiKeys: Partial<Record<"deepseek" | "openai" | "groq" | "openrouter" | "mistral" | "cerebras", string>> = {};
-
-type Provider = "deepseek" | "openai" | "groq" | "openrouter" | "mistral" | "cerebras";
-
-export function setSessionAiApiKey(value: string, provider: Provider = "groq"): void {
-  const key = value.trim();
-  if (key) sessionAiApiKeys[provider] = key;
-  else delete sessionAiApiKeys[provider];
-}
-
-export function getSessionAiApiKey(provider: Provider = "groq"): string {
-  return sessionAiApiKeys[provider] ?? "";
-}
-
-export function hasSessionAiApiKey(provider: Provider = "groq"): boolean {
-  return Boolean(sessionAiApiKeys[provider]?.length);
-}
-
-export function clearSessionAiApiKey(provider: Provider = "groq"): void {
-  delete sessionAiApiKeys[provider];
-}
-
-/** Clear all in-memory credentials when the app is locked. */
-export function clearAllSessionAiApiKeys(): void {
-  for (const provider of Object.keys(sessionAiApiKeys) as Provider[]) {
-    delete sessionAiApiKeys[provider];
-  }
-}
+let sessionOpenAiApiKey = "";
+export function setSessionAiApiKey(value: string, _provider: "openai" = "openai"): void { sessionOpenAiApiKey = value.trim(); }
+export function getSessionAiApiKey(_provider: "openai" = "openai"): string { return sessionOpenAiApiKey; }
+export function hasSessionAiApiKey(_provider: "openai" = "openai"): boolean { return Boolean(sessionOpenAiApiKey.length); }
+export function clearSessionAiApiKey(_provider: "openai" = "openai"): void { sessionOpenAiApiKey = ""; }
+export function clearAllSessionAiApiKeys(): void { sessionOpenAiApiKey = ""; }
