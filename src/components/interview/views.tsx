@@ -19,7 +19,7 @@ import { clearSessionAiApiKey, getSessionAiApiKey, hasSessionAiApiKey, setSessio
 import { QUESTIONS, RULES_META, questionById, scopeIds } from "@/lib/interview/rules";
 import { SUGGESTION_LABEL, canonicalBody, closeBlockers, evaluate, scoreAllowed } from "@/lib/interview/scoring";
 import type { Answer, AnswerStatus, CaseFile, Segment, Speaker } from "@/lib/interview/types";
-import { applyAiSuggestionToCase, requestAiSuggestions, transcribeAudioWithGroq } from "@/lib/interview/ai-assist";
+import { applyAiSuggestionToCase, requestAiSuggestions, suggestTranscriptSpeakersWithGroq, transcribeAudioWithGroq } from "@/lib/interview/ai-assist";
 import type { AiAssistResult, AiProvider, AiQuestionSuggestion } from "@/lib/interview/ai-assist";
 import { authenticateBiometric, biometricAvailable, isNativeAndroid, savePdfToPublicStorage, sharePdf } from "@/lib/interview/native-exports";
 import { FORM_WORKFLOW } from "@/lib/interview/forms";
@@ -604,7 +604,7 @@ function RecordScreen() {
                 startSec: chunk.startSec,
                 endSec: chunk.endSec,
                 confidence: null,
-                origin: "browser_speech",
+                origin: "cloud_asr",
               };
               const review = reviewSegment(raw);
               const suggestedRole = review.speakerConfidence >= 0.52 ? review.suggestedSpeaker : "overlap";
@@ -616,14 +616,35 @@ function RecordScreen() {
                 speakerSuggested: review.suggestedSpeaker,
               };
             });
-            const allSegments = [...active.segments, ...newSegments];
             patchCase(caseId, (file) => withAudit({
               ...file,
               segments: [...file.segments, ...newSegments],
-              autoProcessingNote: "تبدیل گفتار به متن انجام شد؛ تشخیص گوینده احتمالی است و باید توسط کارشناس بازبینی شود.",
+              autoProcessingNote: "تبدیل گفتار به متن انجام شد؛ در حال پیشنهاد نقش گوینده و تحلیل متن…",
             }, "asr_auto_complete", `${newSegments.length} segments`), false);
 
-            if (allSegments.some((segment) => segment.speaker === "client")) {
+            setProcessingMessage("در حال تشخیص احتمالی نقش گویندگان…");
+            const speakerSuggestions = await suggestTranscriptSpeakersWithGroq({ apiKey: sessionKey, segments: newSegments });
+            const speakerById = new Map(speakerSuggestions.map((item) => [item.segmentId, item]));
+            const classifiedSegments = newSegments.map((segment) => {
+              const suggestion = speakerById.get(segment.id);
+              const confident = Boolean(suggestion && suggestion.confidence >= 0.65);
+              return {
+                ...segment,
+                speaker: confident ? suggestion!.speaker : "overlap",
+                speakerSuggested: suggestion?.speaker ?? segment.speakerSuggested,
+                speakerConfidence: suggestion?.confidence ?? segment.speakerConfidence,
+              };
+            });
+            patchCase(caseId, (file) => withAudit({
+              ...file,
+              segments: file.segments.map((segment) => speakerById.has(segment.id)
+                ? classifiedSegments.find((candidate) => candidate.id === segment.id) ?? segment
+                : segment),
+              autoProcessingNote: "متن و نقش احتمالی گویندگان ساخته شد؛ همه موارد نیازمند بازبینی انسانی‌اند.",
+            }, "speaker_ai_suggestions", `${classifiedSegments.length} segments`), false);
+            const allSegments = [...active.segments, ...classifiedSegments];
+
+            if (classifiedSegments.some((segment) => segment.speaker === "client")) {
               setProcessingMessage("در حال ساخت پیشنهادهای هوش مصنوعی از متن…");
               const result = await requestAiSuggestions({
                 provider: "groq",
@@ -855,7 +876,7 @@ function TranscriptScreen() {
             </p>
             <p className="mt-1 text-sm text-muted">
               {segment.speakerSuggested ? `پیشنهاد نقش: ${speakerLabel(segment.speakerSuggested)} (${faNum(Math.round((segment.speakerConfidence ?? 0) * 100))}٪) · نیازمند تأیید` : "نقش گوینده بر اساس انتخاب کاربر"}
-              {" · "}{segment.origin === "manual" ? "ثبت دستی" : "گفتار مرورگر"}
+              {" · "}{segment.origin === "manual" ? "ثبت دستی" : segment.origin === "cloud_asr" ? "تبدیل گفتار ابری" : "گفتار مرورگر"}
               {" · "}
               {segment.confidence === null ? "اطمینان موتور: اعلام نشده" : `اطمینان موتور: ${faNum(segment.confidence.toFixed(2))}`}
             </p>
