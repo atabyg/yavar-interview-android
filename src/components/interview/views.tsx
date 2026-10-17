@@ -1429,8 +1429,9 @@ function SettingsScreen() {
   const { state, patchSettings, wipeAll, removeActive, active } = useInterview();
   const [pinOpen, setPinOpen] = useState<null | "wipe" | "delete" | "phrase">(null);
   const [phrase, setPhrase] = useState(state.settings.endPhrase);
-  const [aiKeyDraft, setAiKeyDraft] = useState(getSessionAiApiKey());
-  const [aiKeyReady, setAiKeyReady] = useState(hasSessionAiApiKey());
+  const [settingsProvider, setSettingsProvider] = useState<AiProvider>(state.settings.aiProvider ?? "groq");
+  const [aiKeyDraft, setAiKeyDraft] = useState(getSessionAiApiKey(state.settings.aiProvider ?? "groq"));
+  const [aiKeyReady, setAiKeyReady] = useState(hasSessionAiApiKey(state.settings.aiProvider ?? "groq"));
   return (
     <div className="no-print flex flex-col gap-3 py-4">
       <h1 className="text-xl font-medium">تنظیمات</h1>
@@ -1438,19 +1439,22 @@ function SettingsScreen() {
       <Field label="عنوان واحد" value={state.settings.deptTitle} onChange={(deptTitle) => patchSettings({ deptTitle })} />
       <Field label="مرکز پیش‌فرض" value={state.settings.centerDefault} onChange={(centerDefault) => patchSettings({ centerDefault })} />
       <Panel>
-        <h2 className="font-medium">کلید API برای پردازش خودکار</h2>
-        <p className="mt-1 text-sm leading-normal text-muted">از کنسول Groq کلید API بگیرید. کلید فقط در حافظه تا بستن یا راه‌اندازی دوباره برنامه نگه داشته می‌شود؛ در پرونده، حافظه دائمی یا مخزن ذخیره نمی‌شود. برای تبدیل صوت از Whisper و برای پیشنهاد متن از مدل زبانی Groq استفاده می‌شود.</p>
-        <Field label="کلید API Groq" value={aiKeyDraft} onChange={setAiKeyDraft} type="password" />
+        <h2 className="font-medium">هوش مصنوعی</h2>
+        <label className="mb-1 block text-sm">ارائه‌دهنده تحلیل متن</label>
+        <select className="min-h-12 w-full rounded-sm border border-line bg-surface px-3" value={settingsProvider} onChange={(event) => { const provider = event.target.value as AiProvider; setSettingsProvider(provider); patchSettings({ aiProvider: provider }); setAiKeyDraft(getSessionAiApiKey(provider)); setAiKeyReady(hasSessionAiApiKey(provider)); }}>
+          <option value="groq">Groq</option><option value="deepseek">DeepSeek</option><option value="openai">OpenAI</option>
+        </select>
+        <Field label="کلید API (نمایش آشکار)" value={aiKeyDraft} onChange={setAiKeyDraft} type="text" />
         <div className="grid grid-cols-2 gap-2">
-          <Btn tone="primary" onClick={() => { setSessionAiApiKey(aiKeyDraft); setAiKeyReady(hasSessionAiApiKey()); setAiKeyDraft(""); }}>
+          <Btn tone="primary" onClick={() => { setSessionAiApiKey(aiKeyDraft, settingsProvider); patchSettings({ aiProvider: settingsProvider }); setAiKeyReady(hasSessionAiApiKey(settingsProvider)); }}>
             ذخیره تا پایان این اجرا
           </Btn>
-          <Btn disabled={!aiKeyReady} onClick={() => { clearSessionAiApiKey(); setAiKeyDraft(""); setAiKeyReady(false); }}>
+          <Btn disabled={!aiKeyReady} onClick={() => { clearSessionAiApiKey(settingsProvider); setAiKeyDraft(""); setAiKeyReady(false); }}>
             حذف کلید
           </Btn>
         </div>
-        <p className="text-xs text-muted">{aiKeyReady ? "کلید در حافظه موقت حاضر است." : "کلیدی برای پردازش خودکار ثبت نشده است."}</p>
-        <p className="text-xs text-muted">برای دریافت کلید: https://console.groq.com/keys</p>
+        <p className="text-xs text-muted">{aiKeyReady ? `کلید ${settingsProvider} در حافظه موقت حاضر است.` : `کلید ${settingsProvider} ثبت نشده است.`}</p>
+        <p className="text-xs text-muted">کلیدها فقط تا بسته‌شدن برنامه در حافظه می‌مانند. تبدیل صوت همچنان به کلید Groq نیاز دارد: https://console.groq.com/keys</p>
       </Panel>
       <label className="block text-sm text-muted">قفل خودکار</label>
       <div className="grid grid-cols-4 gap-2">
