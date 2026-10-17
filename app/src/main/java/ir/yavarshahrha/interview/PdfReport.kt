@@ -88,7 +88,7 @@ object PdfReport {
             block(id + (if (q.critical) " (حیاتی)" else "") + " — امتیاز: " + score + " — وضعیت: " + st, 11f, true)
             block(q.text, 10f)
             if (a != null && a.evidence.isNotBlank()) {
-                block("شاهد" + (if (a.speakerClient) " (گوینده: ممدجو تأیید شده)" else " (گوینده تأیید نشده)") + ": " + a.evidence, 10f)
+                block("شاهد" + (if (a.speakerClient) " (گوینده: مددجو تأیید شده)" else " (گوینده تأیید نشده)") + ": " + a.evidence, 10f)
             }
             if (a != null && a.note.isNotBlank()) block("یادداشت: " + a.note, 10f)
             if (a != null && a.score == 0 && a.zeroResolved) block("صفر بررسی و حل شده", 10f)
