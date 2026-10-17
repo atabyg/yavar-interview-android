@@ -30,6 +30,7 @@ interface Api {
   lock: () => void;
   go: (view: View) => void;
   openCase: (id: string, view?: View) => void;
+  patchCase: (id: string, mutate: (file: CaseFile) => CaseFile, clearApproval?: boolean) => void;
   addCase: (file: CaseFile, view?: View) => void;
   patchActive: (mutate: (file: CaseFile) => CaseFile, clearApproval?: boolean) => void;
   patchSettings: (partial: Partial<Settings>) => void;
@@ -134,6 +135,25 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     },
     openCase(id: string, view: View = "case") {
       setState((current) => ({ ...current, activeId: id, view }));
+    },
+    patchCase(id, mutate, clearApproval = true) {
+      setState((current) => ({
+        ...current,
+        cases: current.cases.map((file) => {
+          if (file.id !== id) return file;
+          let next = mutate(file);
+          if (clearApproval) {
+            next = {
+              ...next,
+              expertApprovedAt: null,
+              secondApprovedAt: null,
+              status: next.status === "signed" ? "review" : next.status,
+            };
+          }
+          next.updatedAt = new Date().toISOString();
+          return next;
+        }),
+      }));
     },
     addCase(file: CaseFile, view: View = "case") {
       setState((current) => ({ ...current, cases: [file, ...current.cases], activeId: file.id, view }));
