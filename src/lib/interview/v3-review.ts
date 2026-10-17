@@ -161,7 +161,7 @@ export function questionCompletionFromSegments(segments: Segment[]): Record<stri
     if (!review.questionId) continue;
     const item = progress[review.questionId];
     item.seen = true;
-    if (segment.speaker === "client" || (review.suggestedSpeaker === "client" && review.speakerConfidence >= 0.7)) item.hasClientEvidence = true;
+    if (segment.speaker === "client" || (review.suggestedSpeaker === "client" && review.speakerConfidence >= 0.5)) item.hasClientEvidence = true;
     if (review.needsHumanReview || segment.speaker === "overlap") item.needsReview = true;
   }
   return progress;
@@ -182,7 +182,9 @@ export function runFinalTranscriptReview(file: CaseFile): FinalReviewIssue[] {
       issues.push({ severity: "info", code: "possible_asr_fragment", message: "احتمال خطای تشخیص یا قطعه‌بندی متن وجود دارد؛ متن صوت با transcript تطبیق داده شود." });
     }
   }
+  const activeQuestionIds = file.kind === "urgent" ? new Set(["H01", "H03", "H05", "H06", "H07", "H08"]) : null;
   for (const question of QUESTIONS) {
+    if (activeQuestionIds && !activeQuestionIds.has(question.id)) continue;
     const answer = file.answers[question.id];
     if (!answer || answer.status === "unanswered" || !answer.evidenceText.trim()) {
       issues.push({ severity: question.critical ? "error" : "warning", code: "question_unanswered", questionId: question.id, message: `سؤال ${question.id} فاقد شاهد ثبت‌شده است؛ پیش از بستن گزارش بازبینی شود.` });
