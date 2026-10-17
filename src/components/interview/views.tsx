@@ -1112,7 +1112,7 @@ function ReportScreen() {
     return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name}</title><style>@page{size:A4;margin:12mm}body{font-family:Tahoma,sans-serif;line-height:1.65;color:#222;direction:rtl;text-align:right;font-size:10pt}h1{font-size:17pt}table{width:100%;border-collapse:collapse;table-layout:fixed;page-break-inside:auto}tr{page-break-inside:avoid;page-break-after:auto}td,th{border:1px solid #999;padding:5px;vertical-align:top;text-align:right;overflow-wrap:anywhere}article{border:0!important;padding:0!important}.text-muted{color:#555}.text-sm{font-size:9pt}.text-xl{font-size:17pt}.mt-3{margin-top:10px}.mt-2{margin-top:6px}.mt-1{margin-top:3px}.grid{display:block}.no-print{display:none!important}</style></head><body>${body}</body></html>`;
   }
 
-remove HTML export function  async function exportPdfToPublicFolder() {
+async function exportPdfToPublicFolder() {
     const html = buildReportHtml();
     if (isNativeAndroid()) {
       await savePdfToPublicStorage(`${name}.pdf`, html);
