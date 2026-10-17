@@ -1,7 +1,7 @@
 import type { AnswerStatus, CaseFile, Segment } from "./types";
 import { QUESTIONS } from "./rules";
 
-export type AiProvider = "deepseek" | "openai";
+export type AiProvider = "deepseek" | "openai" | "groq";
 
 export interface AiQuestionSuggestion {
   questionId: string;
@@ -83,8 +83,10 @@ export async function requestAiSuggestions(args: {
   if (!clientSegments.length) throw new Error("قطعه‌ای با انتساب مددجو برای تحلیل موجود نیست.");
   const endpoint = args.provider === "deepseek"
     ? "https://api.deepseek.com/chat/completions"
-    : "https://api.openai.com/v1/chat/completions";
-  const model = args.provider === "deepseek" ? "deepseek-chat" : "gpt-4o-mini";
+    : args.provider === "groq"
+      ? "https://api.groq.com/openai/v1/chat/completions"
+      : "https://api.openai.com/v1/chat/completions";
+  const model = args.provider === "deepseek" ? "deepseek-flash" : args.provider === "groq" ? "openai/gpt-oss-20b" : "gpt-4o-mini";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45_000);
   const onAbort = () => controller.abort();
@@ -123,6 +125,75 @@ export async function requestAiSuggestions(args: {
     try { parsed = JSON.parse(envelope.choices[0].message.content); }
     catch { throw new Error("خروجی مدل JSON معتبر نیست؛ هیچ پیشنهادی اعمال نشد."); }
     return validate(parsed, args.segments, model);
+  } finally {
+    clearTimeout(timeout);
+    args.signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+
+export interface AudioTranscriptChunk {
+  text: string;
+  startSec: number | null;
+  endSec: number | null;
+}
+
+/**
+ * Transcribe a locally-recorded audio blob using Groq's Whisper endpoint.
+ * Requires case-specific consent in the UI and a session-only API key.
+ * Groq documents WebM uploads and a 25 MB free-tier upload limit.
+ */
+export async function transcribeAudioWithGroq(args: {
+  apiKey: string;
+  audio: Blob;
+  signal?: AbortSignal;
+}): Promise<AudioTranscriptChunk[]> {
+  const apiKey = args.apiKey.trim();
+  if (!apiKey) throw new Error("کلید API در تنظیمات وارد نشده است.");
+  if (!args.audio.size) throw new Error("فایل صوتی خالی است.");
+  if (args.audio.size > 25 * 1024 * 1024) {
+    throw new Error("حجم صوت بیشتر از سقف ۲۵ مگابایت سرویس رایگان است؛ فایل در دستگاه ذخیره شد، اما تبدیل ابری انجام نشد.");
+  }
+  const form = new FormData();
+  form.append("file", args.audio, "yavar-interview.webm");
+  form.append("model", "whisper-large-v3-turbo");
+  form.append("language", "fa");
+  form.append("response_format", "verbose_json");
+  form.append("temperature", "0");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90_000);
+  const onAbort = () => controller.abort();
+  if (args.signal?.aborted) controller.abort();
+  else args.signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) throw new Error("کلید API معتبر نیست یا اجازه استفاده از سرویس را ندارد.");
+      if (response.status === 413) throw new Error("حجم فایل صوتی از محدودیت سرویس بیشتر است.");
+      if (response.status === 429) throw new Error("سهمیه یا محدودیت درخواست سرویس تمام شده است؛ صوت محلی ذخیره شده است.");
+      throw new Error(`تبدیل گفتار انجام نشد (خطای سرویس ${response.status}). ممکن است دسترسی شبکه یا محدودیت حساب مانع شده باشد.`);
+    }
+    const payload: unknown = await response.json();
+    if (!isRecord(payload)) throw new Error("پاسخ تبدیل گفتار قابل خواندن نیست.");
+    const rows = Array.isArray(payload.segments) ? payload.segments : [];
+    const chunks: AudioTranscriptChunk[] = rows.flatMap((row) => {
+      if (!isRecord(row) || typeof row.text !== "string" || !row.text.trim()) return [];
+      return [{
+        text: row.text.trim(),
+        startSec: typeof row.start === "number" && Number.isFinite(row.start) ? row.start : null,
+        endSec: typeof row.end === "number" && Number.isFinite(row.end) ? row.end : null,
+      }];
+    });
+    if (!chunks.length && typeof payload.text === "string" && payload.text.trim()) {
+      chunks.push({ text: payload.text.trim(), startSec: 0, endSec: null });
+    }
+    if (!chunks.length) throw new Error("گفتار قابل متنی‌سازی در فایل پیدا نشد.");
+    return chunks;
   } finally {
     clearTimeout(timeout);
     args.signal?.removeEventListener("abort", onAbort);
