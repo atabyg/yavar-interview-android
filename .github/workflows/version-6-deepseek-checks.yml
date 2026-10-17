@@ -1,0 +1,37 @@
+name: Version 6 DeepSeek API checks
+
+on:
+  push:
+    branches:
+      - version-6-deepseek-api
+  pull_request:
+    branches:
+      - version-5
+      - main
+    paths:
+      - "src/**"
+      - "android-build/**"
+      - ".github/workflows/version-6-deepseek-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  web-build:
+    name: Bundle Android WebView app
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Copy app source into Capacitor build workspace
+        run: cp -a src/. android-build/src/
+      - name: Install dependencies
+        working-directory: android-build
+        run: npm install --no-audit --no-fund
+      - name: Build app bundle
+        working-directory: android-build
+        run: npm run build
