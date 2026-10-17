@@ -1,0 +1,82 @@
+@import "tailwindcss";
+@import "@fontsource/vazirmatn/400.css";
+@import "@fontsource/vazirmatn/500.css";
+@import "@fontsource/vazirmatn/600.css";
+
+@theme {
+  --color-bg: #f3f1ec;
+  --color-surface: #faf9f6;
+  --color-ink: #1c211e;
+  --color-muted: #5e675f;
+  --color-line: #e3ddd3;
+  --color-accent: #1e4a42;
+  --color-accent-fg: #f7f6f2;
+  --color-danger: #8c3a3a;
+  --color-warn: #8a5a2b;
+  --font-sans: "Vazirmatn", "Segoe UI", tahoma, sans-serif;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+}
+
+@layer base {
+  html {
+    direction: rtl;
+  }
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  p,
+  td,
+  th {
+    overflow-wrap: anywhere;
+  }
+}
+
+@keyframes pulse-rec {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.rec-dot {
+  animation: pulse-rec 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot {
+    animation: none;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white;
+  }
+  .report {
+    border: 0;
+  }
+  tr {
+    break-inside: avoid;
+  }
+}
