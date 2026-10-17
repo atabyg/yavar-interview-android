@@ -228,7 +228,7 @@ function HomeScreen() {
       <div className="flex flex-wrap gap-2">
         <Btn
           tone="primary"
-          onClick={() => addCase(createEmptyCase({ center: state.settings.centerDefault }))}
+          onClick={() => addCase(createEmptyCase({ center: state.settings.centerDefault, code: randomSixDigitCode() }))}
         >
           <Plus className="size-4" aria-hidden /> پرونده جدید
         </Btn>
@@ -742,11 +742,45 @@ function RecordScreen() {
             for (const segment of classifiedSegments) allById.set(segment.id, segment);
             const allSegments = Array.from(allById.values());
 
+            const metadataProvider = state.settings.aiProvider ?? "groq";
+            const metadataKey = getSessionAiApiKey(metadataProvider);
+            if (active.cloudAiConsent && metadataKey) {
+              try {
+                setProcessingMessage("در حال تکمیل مشخصات خالی پرونده از متن گفتگو…");
+                const metadata = await suggestCaseMetadataWithAi({
+                  provider: metadataProvider,
+                  apiKey: metadataKey,
+                  consentGranted: active.cloudAiConsent,
+                  segments: allSegments,
+                });
+                const hasMetadata = Boolean(metadata.clientName || metadata.clientDetails || metadata.expertName || metadata.expertDetails || metadata.center || metadata.alias);
+                if (hasMetadata) {
+                  patchCase(caseId, (file) => withAudit({
+                    ...file,
+                    clientName: file.clientName?.trim() ? file.clientName : metadata.clientName,
+                    clientDetails: file.clientDetails?.trim() ? file.clientDetails : metadata.clientDetails,
+                    expertName: file.expertName.trim() ? file.expertName : metadata.expertName,
+                    expertDetails: file.expertDetails?.trim() ? file.expertDetails : metadata.expertDetails,
+                    center: file.center.trim() ? file.center : metadata.center,
+                    alias: file.alias.trim() ? file.alias : metadata.alias,
+                    code: randomSixDigitCode(),
+                    autoProcessingNote: "مشخصات صریح موجود در گفتگو به فیلدهای خالی پیشنهاد/منتقل شد؛ صحت همه فیلدها را کارشناس بررسی کند.",
+                  }, "ai_metadata_autofill", "filled_empty_fields_only"), false);
+                }
+              } catch (metadataError) {
+                const message = metadataError instanceof Error ? metadataError.message : "تکمیل مشخصات انجام نشد.";
+                patchCase(caseId, (file) => ({ ...file, autoProcessingNote: `رونویسی انجام شد؛ تکمیل خودکار مشخصات ناموفق بود: ${message}` }), false);
+              }
+            }
+
             if (classifiedSegments.some((segment) => segment.speaker === "client")) {
               setProcessingMessage("در حال ساخت پیشنهادهای هوش مصنوعی از متن…");
+              const textProvider = state.settings.aiProvider ?? "groq";
+              const textKey = getSessionAiApiKey(textProvider);
+              if (!textKey) throw new Error("برای ارائه‌دهنده انتخاب‌شده، کلید API را در تنظیمات وارد کنید؛ رونویسی صوت ممکن است انجام شده باشد.");
               const result = await requestAiSuggestions({
-                provider: "groq",
-                apiKey: sessionKey,
+                provider: textProvider,
+                apiKey: textKey,
                 consentGranted: active.cloudAiConsent,
                 segments: allSegments,
               });
