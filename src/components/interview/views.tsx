@@ -415,8 +415,6 @@ function ReadyScreen() {
   }, []);
   if (!active) return <NeedCase />;
   const canRecord = active.consentRecorded && active.consentExplained && !active.consentRefused;
-  const liveProgress = questionCompletionFromSegments(active.segments);
-  const liveMappedQuestions = Object.entries(liveProgress).filter(([, item]) => item.seen);
   return (
     <div className="flex flex-col gap-3 py-4">
       <h1 className="text-xl font-medium">آمادگی ضبط</h1>
@@ -474,6 +472,8 @@ function RecordScreen() {
 
   if (!active) return <NeedCase />;
   const canRecord = active.consentRecorded && active.consentExplained && !active.consentRefused;
+  const liveProgress = questionCompletionFromSegments(active.segments);
+  const liveMappedQuestions = Object.entries(liveProgress).filter(([, item]) => item.seen);
 
   async function start() {
     setError("");
@@ -790,7 +790,8 @@ function TranscriptScreen() {
             </div>
             <p className="whitespace-pre-wrap text-base leading-normal">{segment.textRaw}</p>
             <p className="mt-1 text-sm text-muted">
-              {segment.origin === "manual" ? "ثبت دستی" : "گفتار مرورگر"}
+              {segment.speakerSuggested ? `پیشنهاد نقش: ${speakerLabel(segment.speakerSuggested)} (${faNum(Math.round((segment.speakerConfidence ?? 0) * 100))}٪) · نیازمند تأیید` : "نقش گوینده بر اساس انتخاب کاربر"}
+              {" · "}{segment.origin === "manual" ? "ثبت دستی" : "گفتار مرورگر"}
               {" · "}
               {segment.confidence === null ? "اطمینان موتور: اعلام نشده" : `اطمینان موتور: ${faNum(segment.confidence.toFixed(2))}`}
             </p>
