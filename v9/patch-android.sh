@@ -53,6 +53,7 @@ public class OfflineSpeechPlugin extends Plugin implements RecognitionListener {
     private SpeechRecognizer recognizer;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean running = false;
+    private boolean useOnDevice = false;
     private String language = "fa-IR";
     private int failures = 0;
 
@@ -62,7 +63,8 @@ public class OfflineSpeechPlugin extends Plugin implements RecognitionListener {
         boolean onDevice = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
             && SpeechRecognizer.isOnDeviceRecognitionAvailable(getContext());
         JSObject ret = new JSObject();
-        ret.put("available", systemAvailable && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || onDevice));
+        // Keep recognition available when the on-device engine is absent; the system service can use network speech recognition.
+        ret.put("available", systemAvailable);
         ret.put("onDevice", onDevice);
         call.resolve(ret);
     }
@@ -74,21 +76,15 @@ public class OfflineSpeechPlugin extends Plugin implements RecognitionListener {
             call.reject("offline_unavailable: Android speech recognition service is not available");
             return;
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-            && !SpeechRecognizer.isOnDeviceRecognitionAvailable(getContext())) {
-            call.reject("offline_unavailable: on-device speech recognition is not installed");
-            return;
-        }
         stopInternal();
         running = true;
         failures = 0;
+        useOnDevice = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+            && SpeechRecognizer.isOnDeviceRecognitionAvailable(getContext());
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(getContext());
-            } else {
-                // Older Android versions only offer a preference hint; some recognition services may ignore it.
-                recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
-            }
+            recognizer = useOnDevice
+                ? SpeechRecognizer.createOnDeviceSpeechRecognizer(getContext())
+                : SpeechRecognizer.createSpeechRecognizer(getContext());
             recognizer.setRecognitionListener(this);
             startListeningSafe();
             call.resolve();
@@ -116,7 +112,9 @@ public class OfflineSpeechPlugin extends Plugin implements RecognitionListener {
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, language);
         intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-        intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+        // Prefer on-device only when Android confirms an on-device recognizer exists.
+        // On Android 11 and when no local engine exists, allow the system's network recognizer.
+        intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, useOnDevice);
         intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
         intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
         try {
@@ -134,8 +132,9 @@ public class OfflineSpeechPlugin extends Plugin implements RecognitionListener {
             if (!running) return;
             if (recognizer == null) {
                 try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(getContext());
-                    else recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
+                    recognizer = useOnDevice
+                        ? SpeechRecognizer.createOnDeviceSpeechRecognizer(getContext())
+                        : SpeechRecognizer.createSpeechRecognizer(getContext());
                     recognizer.setRecognitionListener(this);
                 } catch (Exception ex) {
                     emitError("موتور تشخیص گفتار در دسترس نیست.");
@@ -194,6 +193,23 @@ public class OfflineSpeechPlugin extends Plugin implements RecognitionListener {
 
     @Override public void onError(int error) {
         if (!running) return;
+        // A device engine can be installed but still lack the requested Persian language pack.
+        // Fall back to the normal recognizer rather than silently producing no transcript.
+        if (useOnDevice && (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
+                || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)) {
+            useOnDevice = false;
+            emitError("بستهٔ فارسی آفلاین در دسترس نیست؛ تشخیص گفتار آنلاین امتحان می‌شود.");
+            destroyRecognizer();
+            try {
+                recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
+                recognizer.setRecognitionListener(this);
+                startListeningSafe();
+            } catch (Exception ex) {
+                emitError("موتور تشخیص گفتار آنلاین نیز در دسترس نیست.");
+                scheduleRestart(1500);
+            }
+            return;
+        }
         failures++;
         if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
             emitError("مجوز میکروفن برای تشخیص گفتار داده نشده است.");
