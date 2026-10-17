@@ -83,7 +83,7 @@ export async function requestAiSuggestions(args: {
   if (!clientSegments.length) throw new Error("قطعه‌ای با انتساب مددجو برای تحلیل موجود نیست.");
   const providerConfig: Record<AiProvider, { endpoint: string; model: string }> = {
     groq: { endpoint: "https://api.groq.com/openai/v1/chat/completions", model: "openai/gpt-oss-20b" },
-    deepseek: { endpoint: "https://api.deepseek.com/chat/completions", model: "deepseek-chat" },
+    deepseek: { endpoint: "https://api.deepseek.com/chat/completions", model: "deepseek-flash" },
     openai: { endpoint: "https://api.openai.com/v1/chat/completions", model: "gpt-4o-mini" },
     openrouter: { endpoint: "https://openrouter.ai/api/v1/chat/completions", model: "openrouter/free" },
     mistral: { endpoint: "https://api.mistral.ai/v1/chat/completions", model: "mistral-small-latest" },
@@ -104,6 +104,7 @@ export async function requestAiSuggestions(args: {
       body: JSON.stringify({
         model,
         temperature: 0,
+        ...(args.provider === "deepseek" ? { thinking: { type: "disabled" } } : {}),
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content:
@@ -119,8 +120,10 @@ export async function requestAiSuggestions(args: {
       })
     });
     if (!response.ok) {
-      if (response.status === 401 || response.status === 403) throw new Error("کلید API معتبر نیست یا اجازه استفاده از این مدل را ندارد.");
-      if (response.status === 429) throw new Error("سهمیه یا محدودیت نرخ سرویس فعال شده است؛ کلید/مدل یا زمان دیگری را امتحان کنید.");
+      if (response.status === 401) throw new Error("کلید API معتبر نیست؛ کلید را بررسی کنید.");
+      if (response.status === 402) throw new Error("اعتبار API کافی نیست یا صورتحساب فعال نیست؛ وضعیت اعتبار حساب DeepSeek را بررسی کنید.");
+      if (response.status === 403) throw new Error("دسترسی به مدل یا سرویس رد شد؛ دسترسی حساب و مدل را بررسی کنید.");
+      if (response.status === 429) throw new Error("محدودیت نرخ یا سهمیه API فعال شده است؛ کمی بعد دوباره تلاش کنید.");
       throw new Error(`سرویس ${args.provider} پاسخ ${response.status} داد؛ متن گفتگو ذخیره یا ارسال مجدد خودکار نمی‌شود.`);
     }
     const envelope: unknown = await response.json();
@@ -347,7 +350,9 @@ export async function suggestCaseMetadataWithAi(args: {
       })
     });
     if (!response.ok) {
-      if (response.status === 401 || response.status === 403) throw new Error("کلید API معتبر نیست یا اجازه استفاده از مدل را ندارد.");
+      if (response.status === 401) throw new Error("کلید API معتبر نیست؛ کلید را بررسی کنید.");
+      if (response.status === 402) throw new Error("اعتبار API کافی نیست یا صورتحساب فعال نیست.");
+      if (response.status === 403) throw new Error("حساب اجازه استفاده از مدل را ندارد.");
       if (response.status === 429) throw new Error("سهمیه API تمام شده است؛ مشخصات به‌صورت خودکار تکمیل نشد.");
       throw new Error(`استخراج مشخصات از API با خطای ${response.status} روبه‌رو شد.`);
     }
