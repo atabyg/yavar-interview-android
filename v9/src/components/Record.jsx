@@ -5,7 +5,7 @@ import { finalizeAudio, patchInterview, saveInterview, deleteInterview, uid } fr
 import { getSettings, saveSettings, analysisKey } from "../settings";
 import { processInterview } from "../pipeline";
 import { fmtDur } from "../export";
-import { toast } from "../ui";
+import { toast, ask } from "../ui";
 import { OfflineSpeech } from "../native-bridge";
 import { QUESTION_SETS, questionSetFor } from "../questions";
 
@@ -170,7 +170,36 @@ export default function Record({ folders, onOpen }) {
       await patchInterview(id, { status: "recorded" });
       setCandidate(""); setPosition("");
       const s = getSettings();
-      if (s.autoProcess && analysisKey(s) && (finalTranscript.length > 20 || s.transcribeProvider !== "offline")) processInterview(id);
+      const liveTextUsable = finalTranscript.trim().length >= 20;
+      let cloudFallbackStarted = false;
+
+      // If Android's speech service produced no usable Persian text, offer a consent-based
+      // fallback that transcribes the saved recording with a configured cloud provider.
+      // Never upload audio automatically while the user has selected the on-device option.
+      if (!liveTextUsable && s.transcribeProvider === "offline") {
+        const cloudProvider = (s.apiKeys && s.apiKeys.groq) ? "groq"
+          : ((s.apiKeys && s.apiKeys.openai) || s.apiKey) ? "openai" : "";
+        if (cloudProvider) {
+          const providerName = cloudProvider === "groq" ? "Groq Whisper" : "OpenAI";
+          const approved = await ask(
+            "تشخیص گفتار گوشی متن قابل‌استفاده‌ای نساخت. آیا اجازه می‌دهید فایل صوتی این مصاحبه برای تبدیل به متن به سرویس " + providerName + " ارسال شود؟ این کار به اینترنت و کلید API معتبر نیاز دارد.",
+            "ارسال و تبدیل صوت"
+          );
+          if (approved) {
+            const model = cloudProvider === "groq" ? "whisper-large-v3" : "gpt-4o-mini-transcribe";
+            await saveSettings({ transcribeProvider: cloudProvider, transcribeModel: model });
+            await patchInterview(id, { transcript: "", status: "recorded", error: "" });
+            toast("تبدیل صوت ابری شروع شد؛ برای نتیجه به اتصال اینترنت و سهمیهٔ سرویس نیاز است.");
+            cloudFallbackStarted = true;
+            processInterview(id);
+          } else {
+            toast("صوت ذخیره شد؛ برای ساخت متن، در تنظیمات سرویس تبدیل صوت را انتخاب کنید.");
+          }
+        } else {
+          toast("صوت ذخیره شد اما متن ساخته نشد. در تنظیمات، Groq یا OpenAI را برای تبدیل صوت انتخاب و کلید API معتبر وارد کنید.");
+        }
+      }
+      if (!cloudFallbackStarted && s.autoProcess && analysisKey(s) && (liveTextUsable || s.transcribeProvider !== "offline")) processInterview(id);
       onOpen(id);
     }
     idRef.current = "";
