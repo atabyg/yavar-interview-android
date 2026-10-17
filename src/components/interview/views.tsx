@@ -21,7 +21,7 @@ import { SUGGESTION_LABEL, canonicalBody, closeBlockers, evaluate, scoreAllowed 
 import type { Answer, AnswerStatus, CaseFile, Segment, Speaker } from "@/lib/interview/types";
 import { applyAiSuggestionToCase, requestAiSuggestions, suggestTranscriptSpeakersWithGroq, transcribeAudioWithGroq } from "@/lib/interview/ai-assist";
 import type { AiAssistResult, AiProvider, AiQuestionSuggestion } from "@/lib/interview/ai-assist";
-import { authenticateBiometric, biometricAvailable, isNativeAndroid, savePdfToPublicStorage, sharePdf } from "@/lib/interview/native-exports";
+import { isNativeAndroid, savePdfToPublicStorage, sharePdf } from "@/lib/interview/native-exports";
 import { FORM_WORKFLOW } from "@/lib/interview/forms";
 import { getMissingCaseFields, questionCompletionFromSegments, reviewSegment, runFinalTranscriptReview, suggestMetadata } from "@/lib/interview/v3-review";
 import { downloadCaseWorkbook } from "@/lib/interview/v3-export";
@@ -574,7 +574,6 @@ function RecordScreen() {
     setProcessing(true);
     setProcessingMessage("در حال ذخیره امن صوت در همین دستگاه…");
     setError("");
-    asrCleanup();
     recorder.onstop = () => {
       const blob = new Blob(chunks.current, { type: recorder.mimeType || "audio/webm" });
       streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -702,10 +701,6 @@ function RecordScreen() {
     recorder.stop();
   }
 
-  function asrCleanup() {
-    // Audio capture is finalized by MediaRecorder; speech processing starts after the local write completes.
-  }
-
   return (
     <div className="flex flex-col gap-3 py-4">
       <h1 className="text-xl font-medium">ضبط مصاحبه</h1>
@@ -769,16 +764,6 @@ function RecordScreen() {
       ) : null}
     </div>
   );
-}
-
-interface SpeechEngine {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((event: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0?: { transcript?: string; confidence?: number } }> }) => void) | null;
-  onerror: (() => void) | null;
-  start: () => void;
-  stop: () => void;
 }
 
 function TranscriptScreen() {
