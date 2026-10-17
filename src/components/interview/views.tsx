@@ -1000,8 +1000,9 @@ function SummaryScreen() {
       </Panel>
       <DeductionEditor />
       <Panel>
-        <h2 className="font-medium">تأیید دوگانه</h2>
-        <p className="mt-1 text-sm leading-normal text-muted">امضا یعنی بازبینی انسانی ثبت شد، نه قبول یا رد مددجو.</p>
+        <h2 className="font-medium">بازبینی کارشناسی و تأیید رسمی</h2>
+        <p className="mt-1 text-sm leading-normal text-muted">این دو دکمه فقط بازبینی دو کارشناس را ثبت می‌کنند. تأیید نهایی F04 باید به‌صورت مکتوب و هم‌زمان توسط رئیس و معاون انجام شود؛ این نسخه چنین تأیید مدیریتی را ثبت الکترونیکی نمی‌کند.</p>
+        <Banner tone="warn">تا پیش از تأیید F04 توسط هر دو مقام و رفع همه موانع، هیچ انتقال یا تعهد اجرایی آغاز نشود.</Banner>
         <ul className="mt-2 text-sm leading-normal">
           {blockers.map((item) => (
             <li key={item}>{item}</li>
@@ -1086,9 +1087,8 @@ function ApproveButton({ who, label, done }: { who: "expert" | "second"; label: 
                 expertApprovedAt: who === "expert" ? stamp : file.expertApprovedAt,
                 secondApprovedAt: who === "second" ? stamp : file.secondApprovedAt,
               };
-              const signed = Boolean(next.expertApprovedAt && next.secondApprovedAt);
               return withAudit(
-                { ...next, status: signed ? "signed" : "review" },
+                { ...next, status: "review" },
                 who === "expert" ? "approve_first" : "approve_second",
                 "timestamp-only",
               );
@@ -1168,11 +1168,13 @@ function ReportScreen() {
           <div>مرکز: {active.center || "—"}</div>
           <div>تاریخ تهیه: {faDate(new Date().toISOString())}</div>
           <div>کارشناس: {active.expertName || "—"} {active.expertApprovedAt ? `(تأیید ${faDate(active.expertApprovedAt)})` : "(هنوز تأیید نشده)"}</div>
-          <div>تأیید دوم: {active.secondExpertName || "—"} {active.secondApprovedAt ? `(${faDate(active.secondApprovedAt)})` : "(هنوز تأیید نشده)"}</div>
+          <div>بازبینی کارشناس دوم: {active.secondExpertName || "—"} {active.secondApprovedAt ? `(${faDate(active.secondApprovedAt)})` : "(هنوز تأیید نشده)"}</div>
+          <div>تأیید دوگانه مدیریتی F04: در این نسخه ثبت الکترونیکی نمی‌شود؛ امضای مکتوب رئیس و معاون لازم است.</div>
           <div>رضایت: {active.consentRecorded && active.consentExplained ? "ثبت شده" : "ناکامل"}{active.consentRefused ? " · ضبط رد شده" : ""}</div>
           <div>نوع: {active.kind === "full" ? "مصاحبه کامل" : "نسخه فوری"}</div>
           {active.kind === "urgent" ? <div>علت نسخه فوری: {active.urgentReason || "ثبت نشده"}</div> : null}
           <div>نسخه قواعد: {RULES_META.version} · معیارهای امتیاز از صفحات ۸ تا ۱۱ شیوه‌نامه ۱۴۰۵</div>
+          <div>فرم‌های F00-F09: مسیر کلی معرفی شده است؛ تکمیل برخط همه فرم‌ها و ثبت امضای رسمی مدیریتی هنوز پیاده‌سازی نشده است.</div>
         </dl>
         <p className="mt-3 text-base">
           خام {faNum(result.raw)} از {faNum(result.maxRaw)} · کسر {faNum(result.deductionApplied)} · خالص {faNum(result.net)}
