@@ -187,6 +187,14 @@ export async function requestAiSuggestions(args: {
     try { parsed = JSON.parse(envelope.choices[0].message.content); }
     catch { throw new Error("خروجی مدل JSON معتبر نیست؛ هیچ پیشنهادی اعمال نشد."); }
     return validate(parsed, args.segments, model);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("درخواست تحلیل بیش از ۴۵ ثانیه طول کشید یا لغو شد؛ هیچ پیشنهاد ناقصی ثبت نشد.");
+    }
+    if (error instanceof TypeError) {
+      throw new Error("اتصال شبکه به سرویس هوش مصنوعی برقرار نشد؛ اینترنت و دسترسی سرویس را بررسی کنید.");
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
     args.signal?.removeEventListener("abort", onAbort);
