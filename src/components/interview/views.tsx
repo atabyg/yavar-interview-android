@@ -23,7 +23,7 @@ import type { AiAssistResult, AiProvider, AiQuestionSuggestion } from "@/lib/int
 import { authenticateBiometric, biometricAvailable, isNativeAndroid, savePdfToPublicStorage, sharePdf } from "@/lib/interview/native-exports";
 import { FORM_WORKFLOW } from "@/lib/interview/forms";
 
-remove generic unencrypted download helperexport function LockScreen() {
+export function LockScreen() {
   const { state, setupPin, unlockWith, unlockWithBiometric } = useInterview();
   const [pin, setPin] = useState("");
   const [again, setAgain] = useState("");
