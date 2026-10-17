@@ -1,7 +1,7 @@
 import type { AnswerStatus, CaseFile, Segment, Speaker } from "./types";
 import { QUESTIONS } from "./rules";
 
-export type AiProvider = "deepseek" | "openai" | "groq";
+export type AiProvider = "deepseek" | "openai" | "groq" | "openrouter" | "mistral" | "cerebras";
 
 export interface AiQuestionSuggestion {
   questionId: string;
