@@ -105,7 +105,7 @@ public class OfflineSpeechPlugin extends Plugin implements RecognitionListener {
         try {
             if (recognizer != null) recognizer.stopListening();
         } catch (Exception ignored) {}
-        handler.postDelayed(this::destroyRecognizer, 350);
+        handler.postDelayed(this::destroyRecognizer, 1600);
         call.resolve();
     }
 

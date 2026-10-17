@@ -125,9 +125,9 @@ export default function Settings({ storage, onChange }) {
 
       <div className="card">
         <div className="mut" style={{ marginBottom: 4 }}>نام مصاحبه‌گر (در گزارش‌ها)</div>
-        <input className="inp" value={s.interviewer || ""} onChange={(e) => upd({ interviewer: e.target.value })} />
+        <input className="inp" defaultValue={s.interviewer || ""} onBlur={(e) => upd({ interviewer: e.target.value.trim() })} />
         <div className="mut" style={{ margin: "10px 0 4px" }}>عنوان سازمان در سربرگ گزارش</div>
-        <input className="inp" value={s.org || ""} onChange={(e) => upd({ org: e.target.value })} />
+        <input className="inp" defaultValue={s.org || ""} onBlur={(e) => upd({ org: e.target.value.trim() })} />
       </div>
 
       <div className="card">

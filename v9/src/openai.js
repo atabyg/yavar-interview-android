@@ -109,7 +109,7 @@ export async function analyze(transcript, ctx, opts) {
     return { name, score: clamp(c.score, 0, 10), note: String(c.note || "شواهد کافی نبود") };
   });
   return {
-    summary: String(j.summary || ""), overall: clamp(j.overall, 0, 100),
+    summary: String(j.summary || ""), overall: Math.round(competencies.reduce((sum, item) => sum + item.score, 0) / COMPETENCIES.length * 10),
     verdict: ["پیشنهاد استخدام", "مشروط / نیازمند بررسی بیشتر", "عدم پیشنهاد"].includes(j.verdict) ? j.verdict : "مشروط / نیازمند بررسی بیشتر",
     competencies, strengths: arr(j.strengths), weaknesses: arr(j.weaknesses), redFlags: arr(j.redFlags), followUp: arr(j.followUp),
     model: opts.model, provider: opts.provider, at: Date.now()

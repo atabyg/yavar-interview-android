@@ -20,11 +20,12 @@ export async function processInterview(id) {
       if (!key) throw new Error("برای تبدیل صوت ابری، کلید ارائه‌دهندهٔ انتخاب‌شده را در تنظیمات وارد کنید.");
       const segs = await getAudioSegments(id);
       if (!segs.length) throw new Error("فایل صوتی پیدا نشد.");
-      const texts = iv.segTexts ? [...iv.segTexts] : [];
+      const previousProvider = iv.transcribeProviderUsed || "openai";
+      const texts = iv.segTexts && previousProvider === s.transcribeProvider ? [...iv.segTexts] : [];
       for (let i = texts.length; i < segs.length; i++) {
         await patchInterview(id, { status: "transcribing", error: "", step: "تبدیل صوت به متن (" + (i + 1) + " از " + segs.length + ")" });
         texts.push(await transcribe(segs[i], "part" + (i + 1) + "." + ext(iv.mime), { provider: s.transcribeProvider, key, model: s.transcribeModel }));
-        await patchInterview(id, { segTexts: texts }, true);
+        await patchInterview(id, { segTexts: texts, transcribeProviderUsed: s.transcribeProvider }, true);
       }
       await patchInterview(id, { transcript: texts.join("\n\n").trim(), status: "transcribed", step: "" });
       iv = await getInterview(id);
