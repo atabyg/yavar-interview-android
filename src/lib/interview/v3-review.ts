@@ -15,6 +15,8 @@ export interface MetadataSuggestions {
   clientName?: string;
   expertName?: string;
   center?: string;
+  clientDetails?: string;
+  expertDetails?: string;
   sourceSegmentIds: string[];
 }
 export interface MissingField {
@@ -132,11 +134,13 @@ export function suggestMetadata(segments: Segment[]): MetadataSuggestions {
   const center = capture(text, [
     /(?:نام مرکز|مرکز)\s*(?:است|:|：)?\s*([\p{L}‌ -]{2,70})/u,
   ]);
+  const clientDetails = capture(text, [/(?:مشخصات مددجو|اطلاعات مددجو)\s*(?:است|:|：)?\s*([^\n]{5,200})/u]);
+  const expertDetails = capture(text, [/(?:مشخصات کارشناس|اطلاعات کارشناس)\s*(?:است|:|：)?\s*([^\n]{5,200})/u]);
   const ids = segments.filter((s) => {
     const t = normalizeFa(s.textRaw);
     return /پرونده|مددجو|کارشناس|مرکز/.test(t);
   }).map((s) => s.id);
-  return { caseCode, clientName, expertName, center, sourceSegmentIds: ids };
+  return { caseCode, clientName, expertName, center, clientDetails, expertDetails, sourceSegmentIds: ids };
 }
 
 export function getMissingCaseFields(file: Partial<CaseFile>): MissingField[] {
