@@ -49,4 +49,12 @@ public class MainActivity extends BridgeActivity {
 }
 EOF
 
-echo "minSdkVersion:"; grep -n 'minSdkVersion' android/variables.gradle || true
+# Android 6.0 (API 23) is the baseline for platform biometric APIs.
+if grep -Eq 'minSdkVersion[[:space:]]*=[[:space:]]*[0-9]+' android/variables.gradle; then
+  sed -i -E 's/minSdkVersion[[:space:]]*=[[:space:]]*[0-9]+/minSdkVersion = 23/' android/variables.gradle
+fi
+grep -Eq 'minSdkVersion[[:space:]]*=[[:space:]]*23' android/variables.gradle || {
+  echo "::error::Could not set minSdkVersion to Android 6.0/API 23 for biometric support"
+  exit 1
+}
+echo "Minimum Android API (expected 23 / Android 6.0):"; grep -n 'minSdkVersion' android/variables.gradle
