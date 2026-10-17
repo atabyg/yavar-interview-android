@@ -90,7 +90,25 @@ export function loadSaved(): SavedState {
       failedAttempts: parsed.failedAttempts ?? 0,
       lockUntil: parsed.lockUntil ?? 0,
       settings: { ...DEFAULT_SETTINGS, ...parsed.settings, endPhrase: parsed.settings?.endPhrase ?? "", allowBrowserSpeech: false },
-      cases: parsed.cases,
+      cases: parsed.cases.map((rawCase) => {
+        const file = rawCase as CaseFile;
+        const audit = Array.isArray(file.audit) ? file.audit : [];
+        const cloudAiConsent = file.cloudAiConsent ?? false;
+        // In V1, "signed" only represented two expert reviews. It is not the required written F04 approval by the head and deputy.
+        if (file.status === "signed") {
+          return {
+            ...file,
+            cloudAiConsent,
+            status: "review" as const,
+            audit: [...audit, {
+              at: new Date().toISOString(),
+              action: "v2_migration_reopen_for_F04",
+              detail: "وضعیت نسخه قبلی بازبینی شد؛ دو تأیید کارشناسی جایگزین تأیید مکتوب رئیس و معاون در F04 نیست.",
+            }].slice(-200),
+          };
+        }
+        return { ...file, cloudAiConsent, audit };
+      }),
     };
   } catch {
     return empty;
