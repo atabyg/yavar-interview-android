@@ -45,7 +45,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.util.Base64;
 import java.io.OutputStream;
-import com.getcapacitor.ActivityResult;
+import androidx.activity.result.ActivityResult;
 import com.getcapacitor.annotation.ActivityCallback;
 import android.print.PrintAttributes;
 import android.print.PrintManager;
