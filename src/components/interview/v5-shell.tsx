@@ -19,7 +19,7 @@ function toLocalDateTimeInput(value?: string | null): string {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
-function newUniqueCode(codes: string[]): string {
+export function newUniqueCode(codes: string[]): string {
   const taken = new Set(codes);
   for (let i = 0; i < 30; i += 1) {
     const candidate = String(Math.floor(100000 + Math.random() * 900000));
