@@ -94,6 +94,10 @@ export interface CaseFile {
   status: CaseStatus;
   createdAt: string;
   updatedAt: string;
+  /** ISO timestamp when moved to archive; null/undefined means active. */
+  archivedAt?: string | null;
+  /** ISO timestamp for an in-app reminder; system notification requires native scheduling. */
+  reminderAt?: string | null;
   segments: Segment[];
   answers: Record<string, Answer>;
   deduction: Deduction;
