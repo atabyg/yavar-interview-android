@@ -22,7 +22,7 @@ export interface Segment {
   endSec: number | null;
   /** Engine value only. Null when the engine did not provide one. */
   confidence: number | null;
-  origin: "manual" | "browser_speech";
+  origin: "manual" | "browser_speech" | "cloud_asr";
   /** V3 suggestions are hints only and never official speaker attribution. */
   questionId?: string;
   speakerConfidence?: number;
