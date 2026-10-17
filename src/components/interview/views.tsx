@@ -108,8 +108,9 @@ export function LockScreen() {
       <p className="text-sm leading-normal text-muted">
         {setup
           ? "رمز محلی این دستگاه در گزارش ذخیره نمی‌شود."
-          : "پرونده‌ها فقط روی همین دستگاه، داخل مرورگر، می‌مانند."}
+          : "پرونده‌ها در همین دستگاه ذخیره می‌شوند؛ این پیش‌نویس هنوز رمزنگاری داده‌ها در حالت سکون را کامل نکرده است."}
       </p>
+      {!setup ? <Banner tone="danger">نسخه آزمایشی: پرونده‌های ذخیره‌شده در مرورگر هنوز در حالت سکون رمزنگاری نشده‌اند. اطلاعات واقعی و حساس مددجویان را وارد نکنید.</Banner> : null}
       {waiting > 0 ? <Banner tone="warn">ورود تا {faNum(Math.ceil(waiting / 1000))} ثانیه بسته است.</Banner> : null}
       <PinPad value={phase === "two" ? again : pin} onChange={phase === "two" ? setAgain : setPin} />
     </LockFrame>
@@ -632,24 +633,10 @@ function RecordScreen() {
         <p className="text-sm text-muted">عبارت پایان در تنظیمات خالی است. پایان لمسی همیشه در دسترس است.</p>
       )}
       <Panel>
-        <h2 className="font-medium">تشخیص گفتار مرورگر</h2>
+        <h2 className="font-medium">تشخیص گفتار ابری غیرفعال است</h2>
         <p className="mt-1 text-sm leading-normal text-muted">
-          پیش‌فرض خاموش است. در کروم ممکن است صوت از دستگاه خارج شود. اطمینان ساختگی ساخته نمی‌شود و گوینده تا اصلاح شما «نامشخص» می‌ماند.
+          در این نسخه، برای جلوگیری از ارسال ناخواسته صدا به سرویس‌های مرورگر، تشخیص گفتار مرورگر در دسترس نیست. متن را می‌توانید پس از پایان ضبط به‌صورت دستی بازبینی و اصلاح کنید.
         </p>
-        {state.settings.allowBrowserSpeech ? (
-          <>
-            <CheckRow
-              checked={active.cloudAsrConsent}
-              onChange={(cloudAsrConsent) => patchActive((file) => ({ ...file, cloudAsrConsent }), false)}
-              label="برای این جلسه اجازه می‌دهم مرورگر گفتار را به متن تبدیل کند."
-            />
-            <Btn disabled={!active.cloudAsrConsent || phase !== "rec"} onClick={startBrowserSpeech}>
-              شروع تشخیص همین جلسه
-            </Btn>
-          </>
-        ) : (
-          <p className="mt-2 text-sm">قابلیت تشخیص گفتار مرورگر در تنظیمات خاموش است.</p>
-        )}
       </Panel>
       <Btn onClick={() => go("transcript")}>رفتن به متن</Btn>
       {endMode ? (
@@ -1282,11 +1269,9 @@ function SettingsScreen() {
           </Btn>
         ))}
       </div>
-      <CheckRow
-        checked={state.settings.allowBrowserSpeech}
-        onChange={(allowBrowserSpeech) => patchSettings({ allowBrowserSpeech })}
-        label="اجازهٔ نمایش تشخیص گفتار مرورگر. پیش‌فرض خاموش. ممکن است صوت از دستگاه خارج شود."
-      />
+      <p className="text-sm leading-normal text-muted">
+        تشخیص گفتار مرورگر و ارسال صدای آن به سرویس بیرونی در این نسخه غیرفعال است. تنها درخواست آنلاین مجاز در این پیش‌نویس، درخواست AI پس از رضایت جداگانه و اقدام آگاهانه کارشناس است.
+      </p>
       <Field label="عبارت پایان ضبط" value={phrase} onChange={setPhrase} type="password" />
       <Btn onClick={() => setPinOpen("phrase")}>ذخیره عبارت پایان</Btn>
       <p className="text-sm leading-normal text-muted">
@@ -1370,7 +1355,7 @@ function MethodScreen() {
       </Panel>
       <Panel>
         <h2 className="font-medium">جریان فرم‌های مرجع F۰۰ تا F۰۹</h2>
-        <p className="mt-1 text-sm text-muted">این فهرست از بسته فرم‌ها ویرایش ۵ استخراج شده است. خود بسته برای بررسی معاونت حقوقی است و این صفحه جایگزین امضا، فرم کاغذی یا تأیید سازمانی نیست.</p>
+        <p className="mt-1 text-sm text-muted">این فهرست از بسته فرم‌ها ویرایش ۵ استخراج شده است. خود بسته برای بررسی معاونت حقوقی است و این صفحه جایگزین امضا، فرم کاغذی یا تأیید سازمانی نیست. بانک ۲۴ سؤال F02 همین بسته با بانک ۲۴ سؤال شیوه‌نامه نهایی یکسان نیست؛ تا رفع تعارض، امتیازدهی این نسخه به بانک شیوه‌نامه اصلی (ح۱ تا ح۱۲ و ۱۳ تا ۲۴) تکیه می‌کند و فرم F02 به‌عنوان فرم کامل قابل اجرا/امضای نهایی تلقی نمی‌شود.</p>
         <div className="mt-2 flex flex-col gap-2">
           {FORM_WORKFLOW.map((form) => <div key={form.code} className="rounded-sm border border-line p-2"><p className="font-medium">{form.code} · {form.title}</p><p className="text-sm text-muted">{form.when}</p><p className="text-sm">{form.purpose}</p></div>)}
         </div>
