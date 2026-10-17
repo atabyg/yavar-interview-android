@@ -41,14 +41,23 @@ async function request(url, init, options = {}) {
 }
 export async function testProviderKey(provider, key) {
   if (!key || !key.trim()) throw new Error("کلید را وارد کنید.");
+  let r;
   if (provider === "gemini") {
-    await request("https://generativelanguage.googleapis.com/v1beta/models", { headers: { "x-goog-api-key": key } }, { retries: 0, timeoutMs: 20000 });
+    r = await request("https://generativelanguage.googleapis.com/v1beta/models", { headers: { "x-goog-api-key": key } }, { retries: 0, timeoutMs: 20000 });
   } else {
     const base = BASES[provider];
     if (!base) throw new Error("این ارائه‌دهنده پشتیبانی نمی‌شود.");
-    await request(base + "/models", { headers: { Authorization: "Bearer " + key } }, { retries: 0, timeoutMs: 20000 });
+    r = await request(base + "/models", { headers: { Authorization: "Bearer " + key } }, { retries: 0, timeoutMs: 20000 });
   }
-  return true;
+  const data = await r.json();
+  let ids = provider === "gemini"
+    ? (data.models || []).filter((m) => (m.supportedGenerationMethods || []).includes("generateContent")).map((m) => String(m.name || "").replace(/^models\\//, ""))
+    : (data.data || []).map((m) => String(m.id || ""));
+  ids = ids.filter(Boolean);
+  if (provider === "openai") ids = ids.filter((id) => /^(gpt-|o[1-9])/.test(id));
+  if (provider === "groq") ids = ids.filter((id) => /^(openai\\/gpt-|llama-|mixtral-|qwen-|deepseek-|meta-llama-)/i.test(id));
+  if (provider === "mistral") ids = ids.filter((id) => /mistral|ministral|codestral|open-mistral/i.test(id) && !/embed|moderation/i.test(id));
+  return [...new Set(ids)].sort();
 }
 export const testKey = (key) => testProviderKey("openai", key);
 export async function transcribe(blob, filename, opts) {
