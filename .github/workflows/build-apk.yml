@@ -1,0 +1,85 @@
+name: Build Yavar Version 7 Android APK
+
+on:
+  push:
+    branches:
+      - version-7-unified-ai
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Build and package debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Prepare Android workspace with the latest app source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf app
+          mkdir app
+          test -f src/components/interview/workstation.tsx
+          test -f android-build/package.json
+          cp -a android-build/. app/
+          # Overlay current app files after the Android wrapper, preserving android-main.tsx/native-bridge.ts.
+          cp -a src/. app/src/
+          test -f app/src/android-main.tsx
+          test -f app/src/components/interview/workstation.tsx
+          test -f app/patch-android.sh
+
+      - name: Install dependencies and build WebView bundle
+        working-directory: app
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm run build
+          test -s dist/index.html
+
+      - name: Create and patch native Android project
+        working-directory: app
+        run: |
+          set -euo pipefail
+          npx cap add android
+          bash patch-android.sh
+          npx cap sync android
+          grep -q 'versionCode 7' android/app/build.gradle
+          grep -q 'versionName "7.0.0"' android/app/build.gradle
+
+      - name: Build debug APK
+        working-directory: app/android
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK and record checksum
+        run: |
+          set -euo pipefail
+          cp app/android/app/build/outputs/apk/debug/app-debug.apk yavar-interview-v7-debug.apk
+          test -s yavar-interview-v7-debug.apk
+          sha256sum yavar-interview-v7-debug.apk
+
+      - name: Upload installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: yavar-interview-v7-debug-apk
+          path: yavar-interview-v7-debug.apk
+          if-no-files-found: error
+          retention-days: 30
