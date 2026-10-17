@@ -4,7 +4,6 @@ run-name: Build V3 debug APK
 on:
   push:
     branches:
-      - feature/offline-ai-interview-v2
       - feature/interview-v3-live-review
   workflow_dispatch:
 
