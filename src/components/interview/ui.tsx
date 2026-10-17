@@ -24,11 +24,13 @@ export function Field({
   value,
   onChange,
   type = "text",
+  readOnly = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
+  readOnly?: boolean;
 }) {
   return (
     <label className="block">
@@ -36,6 +38,7 @@ export function Field({
       <input
         type={type}
         value={value}
+        readOnly={readOnly}
         onChange={(event) => onChange(event.target.value)}
         className="h-12 w-full rounded-sm border border-line bg-bg px-3 text-base text-ink outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       />
