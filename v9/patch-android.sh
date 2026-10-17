@@ -54,6 +54,7 @@ public class OfflineSpeechPlugin extends Plugin implements RecognitionListener {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean running = false;
     private boolean useOnDevice = false;
+    private boolean onlineFallbackTried = false;
     private String language = "fa-IR";
     private int failures = 0;
 
@@ -81,6 +82,7 @@ public class OfflineSpeechPlugin extends Plugin implements RecognitionListener {
         failures = 0;
         useOnDevice = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
             && SpeechRecognizer.isOnDeviceRecognitionAvailable(getContext());
+        onlineFallbackTried = false;
         try {
             recognizer = useOnDevice
                 ? SpeechRecognizer.createOnDeviceSpeechRecognizer(getContext())
@@ -191,26 +193,43 @@ public class OfflineSpeechPlugin extends Plugin implements RecognitionListener {
         scheduleRestart(250);
     }
 
+    private boolean fallbackToOnline(String reason) {
+        if (!running || !useOnDevice || onlineFallbackTried) return false;
+        onlineFallbackTried = true;
+        useOnDevice = false;
+        emitError(reason + "؛ موتور معمول اندروید امتحان می‌شود.");
+        destroyRecognizer();
+        try {
+            recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
+            recognizer.setRecognitionListener(this);
+            startListeningSafe();
+        } catch (Exception ex) {
+            emitError("موتور تشخیص گفتار آنلاین نیز در دسترس نیست.");
+            scheduleRestart(1500);
+        }
+        return true;
+    }
+
     @Override public void onError(int error) {
         if (!running) return;
-        // A device engine can be installed but still lack the requested Persian language pack.
-        // Fall back to the normal recognizer rather than silently producing no transcript.
+        // Local engine availability does not guarantee that its Persian model is installed.
         if (useOnDevice && (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
                 || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)) {
-            useOnDevice = false;
-            emitError("بستهٔ فارسی آفلاین در دسترس نیست؛ تشخیص گفتار آنلاین امتحان می‌شود.");
-            destroyRecognizer();
-            try {
-                recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
-                recognizer.setRecognitionListener(this);
-                startListeningSafe();
-            } catch (Exception ex) {
-                emitError("موتور تشخیص گفتار آنلاین نیز در دسترس نیست.");
-                scheduleRestart(1500);
-            }
+            fallbackToOnline("بستهٔ فارسی آفلاین در دسترس نیست");
             return;
         }
         failures++;
+        // Some local engines report repeated no-match/timeouts instead of a language error.
+        // Switch to the regular system recognizer after repeated failures so text is not silently lost.
+        if (useOnDevice && failures >= 3 && (error == SpeechRecognizer.ERROR_NO_MATCH
+                || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                || error == SpeechRecognizer.ERROR_SERVER
+                || error == SpeechRecognizer.ERROR_NETWORK
+                || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT
+                || error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED)) {
+            fallbackToOnline("تشخیص آفلاین فارسی نتیجه‌ای نداد");
+            return;
+        }
         if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
             emitError("مجوز میکروفن برای تشخیص گفتار داده نشده است.");
             running = false;
