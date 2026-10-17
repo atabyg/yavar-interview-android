@@ -25,11 +25,112 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(NativeInterviewPlugin.class);
         super.onCreate(savedInstanceState);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
     }
 }
 EOF
+
+
+# Register the native PDF print bridge. Android's print dialog lets the user choose
+# "Save as PDF" and the destination. Opening the dialog is not proof the file was saved.
+JAVA_DIR=$(dirname "$MAIN")
+cat > "$JAVA_DIR/NativeInterviewPlugin.java" <<'JAVA'
+package __PACKAGE__;
+
+import android.app.Activity;
+import android.content.Context;
+import android.print.PrintAttributes;
+import android.print.PrintManager;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+@CapacitorPlugin(name = "NativeInterview")
+public class NativeInterviewPlugin extends Plugin {
+    @PluginMethod
+    public void isBiometricAvailable(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("available", false);
+        result.put("reason", "ورود زیست‌سنجی در این نسخه فعال نیست.");
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void authenticateBiometric(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("authenticated", false);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void savePdf(PluginCall call) {
+        openPrintDialog(call, false);
+    }
+
+    @PluginMethod
+    public void sharePdf(PluginCall call) {
+        openPrintDialog(call, true);
+    }
+
+    private void openPrintDialog(PluginCall call, boolean shareFlow) {
+        final String fileName = call.getString("fileName", "yavar-report.pdf");
+        final String html = call.getString("html", "");
+        if (html.isEmpty()) {
+            call.reject("محتوای گزارش خالی است.");
+            return;
+        }
+        final Activity activity = getActivity();
+        if (activity == null) {
+            call.reject("فعالیت اندروید در دسترس نیست.");
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            try {
+                WebView printWebView = new WebView(activity);
+                printWebView.getSettings().setJavaScriptEnabled(false);
+                printWebView.setWebViewClient(new WebViewClient() {
+                    @Override
+                    public void onPageFinished(WebView view, String url) {
+                        try {
+                            PrintManager printManager = (PrintManager) activity.getSystemService(Context.PRINT_SERVICE);
+                            if (printManager == null) {
+                                call.reject("سرویس چاپ اندروید در دسترس نیست.");
+                                return;
+                            }
+                            String jobName = fileName.replaceAll("[^A-Za-z0-9._-]", "_");
+                            PrintAttributes attributes = new PrintAttributes.Builder()
+                                .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                                .setResolution(new PrintAttributes.Resolution("yavar_pdf", "PDF", 300, 300))
+                                .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                                .build();
+                            printManager.print(jobName, view.createPrintDocumentAdapter(jobName), attributes);
+                            JSObject result = new JSObject();
+                            if (shareFlow) {
+                                result.put("chooserOpened", true);
+                            } else {
+                                result.put("uri", "android-print-dialog");
+                            }
+                            call.resolve(result);
+                        } catch (Exception error) {
+                            call.reject("بازکردن پنجره چاپ/ذخیره PDF ناموفق بود.", error);
+                        }
+                    }
+                });
+                printWebView.loadDataWithBaseURL("https://localhost/", html, "text/html", "UTF-8", null);
+            } catch (Exception error) {
+                call.reject("ساخت پیش‌نمایش PDF ناموفق بود.", error);
+            }
+        });
+    }
+}
+JAVA
+sed -i "s/__PACKAGE__/$PKG/" "$JAVA_DIR/NativeInterviewPlugin.java"
 
 # Set V5 version metadata while preserving V4 applicationId for in-place Android upgrade.
 BUILD=android/app/build.gradle
