@@ -1,0 +1,73 @@
+name: Build Version 5 Android APK
+
+on:
+  push:
+    branches: [version-5]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Prepare web sources
+        run: |
+          set -euo pipefail
+          rm -rf app
+          mkdir app
+          test -f src/components/interview/workstation.tsx
+          cp -r src app/src
+          cp -r android-build/. app/
+      - name: Install dependencies and build web app
+        working-directory: app
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          test -f dist/index.html
+      - name: Add and patch Android project
+        working-directory: app
+        run: |
+          npx cap add android
+          bash patch-android.sh
+          npx cap sync android
+      - name: Configure stable debug signing key
+        working-directory: app/android
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          base64 --decode ../debug.keystore.b64 > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
+      - name: Build debug APK
+        working-directory: app/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+      - name: Collect and verify APK
+        run: |
+          cp app/android/app/build/outputs/apk/debug/app-debug.apk yavar-interview-v5-debug.apk
+          unzip -t yavar-interview-v5-debug.apk >/dev/null
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose yavar-interview-v5-debug.apk
+          "$BUILD_TOOLS/aapt" dump badging yavar-interview-v5-debug.apk | grep -F "package: name='com.yavarshahrha.interview.v4' versionCode='5' versionName='5.0.0'"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yavar-interview-v5-apk
+          path: yavar-interview-v5-debug.apk
+      - name: Publish release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: yavar-v5-apk-${{ github.run_number }}
+          name: Yaavar V5 APK build ${{ github.run_number }}
+          files: yavar-interview-v5-debug.apk
