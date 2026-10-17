@@ -1090,7 +1090,7 @@ function QuestionsScreen() {
         </Panel>
         <Panel>
           <div className="flex items-center gap-2"><Sparkles className="size-5" aria-hidden /><h2 className="font-medium">کمک هوش مصنوعی (اختیاری و ابری)</h2></div>
-          <p className="mt-2 text-sm leading-normal text-muted">فقط متن قطعه‌هایی که گوینده‌شان «مددجو» علامت خورده به سرویس انتخابی ارسال می‌شوند؛ صوت، نام مستعار و شناسه پرونده ارسال نمی‌شوند، اما خود متن ممکن است نام، شماره تماس یا اطلاعات درمانی/قضایی داشته باشد. پیش از درخواست، متن گفتگو را بازبینی و اطلاعات شناسایی‌کننده را دستی حذف/پوشانده کنید. این انتقال داده حساس را از گوشی خارج می‌کند و رضایت مستقل همین پرونده لازم است.</p>
+          <p className="mt-2 text-sm leading-normal text-muted">فقط متن قطعه‌هایی که گوینده‌شان «مددجو» علامت خورده به OpenAI ارسال می‌شوند؛ صوت، نام مستعار و شناسه پرونده ارسال نمی‌شوند، اما خود متن ممکن است نام، شماره تماس یا اطلاعات درمانی/قضایی داشته باشد. پیش از درخواست، متن گفتگو را بازبینی و اطلاعات شناسایی‌کننده را دستی حذف/پوشانده کنید. این انتقال داده حساس را از گوشی خارج می‌کند و رضایت مستقل همین پرونده لازم است.</p>
           <CheckRow checked={active.cloudAiConsent} onChange={(cloudAiConsent) => patchActive((file) => withAudit({ ...file, cloudAiConsent }, "ai_cloud_consent", cloudAiConsent ? "granted" : "revoked"), false)} label="پس از توضیح پیام بالا، برای ارسال متن قطعه‌های منتسب به مددجو به سرویس ابری رضایت می‌دهم." />
           <p className="text-sm">سرویس فعال: <strong>OpenAI</strong>. سرویس و کلید فقط از صفحه تنظیمات مدیریت می‌شوند.</p>
           {!getSessionAiApiKey("openai") ? <Banner tone="warn">ابتدا کلید OpenAI را در تنظیمات وارد و ذخیره کنید.</Banner> : null}
@@ -1469,7 +1469,8 @@ function SettingsScreen() {
         {connectionTestMessage ? <Banner tone={connectionTestMessage.startsWith("اتصال موفق") ? "neutral" : "warn"}>{connectionTestMessage}</Banner> : null}
         <p className="text-xs leading-normal text-muted">{aiKeyReady ? "کلید OpenAI در حافظه موقت حاضر است." : "کلید OpenAI ثبت نشده است."}</p>
         <p className="text-xs leading-normal text-muted">کلید در پرونده و تنظیمات ذخیره نمی‌شود و با قفل برنامه پاک می‌شود؛ اما در برنامه‌ای که مستقیم از گوشی به API وصل می‌شود، کلید در برابر کاربر دستگاه کاملاً محرمانه نیست. کلید سازمانی مشترک را داخل APK عمومی قرار ندهید. دریافت کلید: platform.openai.com/api-keys.</p>
-      </Panel>      <label className="block text-sm text-muted">قفل خودکار</label>
+      </Panel>
+      <label className="block text-sm text-muted">قفل خودکار</label>
       <div className="grid grid-cols-4 gap-2">
         {[1, 5, 15, 0].map((minutes) => (
           <Btn key={minutes} tone={state.settings.autoLockMin === minutes ? "primary" : "ghost"} onClick={() => patchSettings({ autoLockMin: minutes })}>
