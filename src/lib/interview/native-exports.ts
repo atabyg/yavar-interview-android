@@ -4,7 +4,7 @@ interface NativeInterviewPlugin {
   isBiometricAvailable(): Promise<{ available: boolean; reason?: string }>;
   authenticateBiometric(): Promise<{ authenticated: boolean }>;
   savePdf(options: { fileName: string; html: string }): Promise<{ uri: string }>;
-  sharePdf(options: { fileName: string; html: string }): Promise<{ shared: boolean }>;
+  sharePdf(options: { fileName: string; html: string }): Promise<{ chooserOpened: boolean }>;
 }
 const NativeInterview = registerPlugin<NativeInterviewPlugin>("NativeInterview");
 
@@ -31,5 +31,6 @@ export async function savePdfToPublicStorage(fileName: string, html: string): Pr
 
 export async function sharePdf(fileName: string, html: string): Promise<void> {
   if (!isNativeAndroid()) throw new Error("اشتراک‌گذاری بومی فقط در نسخه اندروید پشتیبانی می‌شود.");
-  await NativeInterview.sharePdf({ fileName, html });
+  const result = await NativeInterview.sharePdf({ fileName, html });
+  if (!result.chooserOpened) throw new Error("منوی اشتراک‌گذاری باز نشد.");
 }
