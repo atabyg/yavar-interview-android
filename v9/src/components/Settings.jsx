@@ -4,6 +4,7 @@ import { requestPersist } from "../db";
 import { getSettings, saveSettings } from "../settings";
 import { testProviderKey, friendly } from "../openai";
 import { ask, size, toast } from "../ui";
+import { OfflineWhisper } from "../native-bridge";
 
 const Sw = ({ on, set, label }) => <button className={"sw " + (on ? "on" : "")} style={{ width: "100%" }} onClick={() => set(!on)}><span>{label}</span><i /></button>;
 const PROVIDERS = {
@@ -22,7 +23,30 @@ export default function Settings({ storage, onChange }) {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [modelLists, setModelLists] = useState({});
-  useEffect(() => setS(getSettings()), []);
+  const [offlineModel, setOfflineModel] = useState({ downloaded: false, sizeBytes: 0 });
+  const [modelBusy, setModelBusy] = useState(false);
+  const [modelProgress, setModelProgress] = useState(0);
+  const [modelError, setModelError] = useState("");
+  useEffect(() => {
+    setS(getSettings());
+    let alive = true;
+    let progressHandle = null;
+    OfflineWhisper.modelStatus().then((status) => {
+      if (alive) setOfflineModel(status || { downloaded: false, sizeBytes: 0 });
+    }).catch(() => {
+      if (alive) setOfflineModel({ downloaded: false, sizeBytes: 0, unavailable: true });
+    });
+    OfflineWhisper.addListener("modelDownloadProgress", (event) => {
+      if (alive) setModelProgress(Math.max(0, Math.min(100, Number(event && event.progress) || 0)));
+    }).then((handle) => {
+      if (alive) progressHandle = handle;
+      else handle.remove();
+    }).catch(() => {});
+    return () => {
+      alive = false;
+      if (progressHandle) progressHandle.remove();
+    };
+  }, []);
   const upd = async (patch) => {
     const n = await saveSettings(patch);
     setS({ ...n, apiKeys: { ...(n.apiKeys || {}) } });
@@ -80,7 +104,24 @@ export default function Settings({ storage, onChange }) {
     await upd({ analyzeProvider: provider, analyzeModel: preferredModel(provider, options) });
   }
   async function changeTranscribeProvider(provider) {
-    await upd({ transcribeProvider: provider, transcribeModel: provider === "offline" ? "offline-speech-recognizer" : modelForTranscription(provider) });
+    await upd({ transcribeProvider: provider, transcribeModel: provider === "offline" ? "whisper-tiny-q5_1-fa" : modelForTranscription(provider) });
+  }
+  async function downloadOfflineModel() {
+    setModelBusy(true);
+    setModelProgress(0);
+    setModelError("");
+    try {
+      const status = await OfflineWhisper.downloadModel();
+      setOfflineModel(status || { downloaded: true });
+      setModelProgress(100);
+      toast("مدل گفتار آفلاین دانلود و بررسی شد؛ تبدیل صوت از این پس بدون کلید API انجام می‌شود.");
+    } catch (e) {
+      const message = String((e && e.message) || e || "خطای ناشناخته");
+      setModelError(message);
+      toast("دانلود مدل آفلاین انجام نشد؛ اتصال اینترنت را بررسی کنید.");
+    } finally {
+      setModelBusy(false);
+    }
   }
 
   return (
@@ -103,10 +144,30 @@ export default function Settings({ storage, onChange }) {
       <div className="card">
         <h4><Mic size={14} style={{ verticalAlign: "-2px" }} /> تبدیل گفتار به متن</h4>
         <select className="inp" value={s.transcribeProvider} onChange={(e) => changeTranscribeProvider(e.target.value)}>
-          <option value="offline">روی گوشی — ترجیح آفلاین، بدون کلید</option>
+          <option value="offline">کاملاً آفلاین — Whisper روی گوشی، بدون کلید API</option>
           <option value="groq">Groq Whisper — آنلاین، کلید Groq</option>
           <option value="openai">OpenAI Transcription — آنلاین، کلید OpenAI</option>
         </select>
+        {s.transcribeProvider === "offline" && <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: "var(--bg)" }}>
+          <div className="row" style={{ alignItems: "center", gap: 10 }}>
+            <div className="grow">
+              <b style={{ fontSize: 13 }}>مدل تبدیل گفتار فارسی آفلاین</b>
+              <div className="mut" style={{ marginTop: 4, lineHeight: 1.8 }}>
+                {offlineModel.downloaded ? "مدل آماده است؛ تبدیل صوت بدون اینترنت و بدون کلید API انجام می‌شود." : "مدل هنوز دانلود نشده است؛ دانلود اولیه حدود ۳۲ مگابایت اینترنت مصرف می‌کند."}
+              </div>
+            </div>
+            <button className="btn alt sm" disabled={modelBusy || offlineModel.downloaded} onClick={downloadOfflineModel}>
+              {offlineModel.downloaded ? "آماده" : modelBusy ? "در حال دانلود…" : "دانلود مدل"}
+            </button>
+          </div>
+          {(modelBusy || modelProgress > 0) && <div style={{ height: 6, borderRadius: 4, marginTop: 10, background: "var(--line)", overflow: "hidden" }}>
+            <div style={{ height: 6, width: modelProgress + "%", background: "var(--teal)", transition: "width .2s" }} />
+          </div>}
+          {modelError && <div style={{ color: "var(--terra)", fontSize: 12, marginTop: 8, lineHeight: 1.7 }}>{modelError}</div>}
+          <div className="mut" style={{ fontSize: 12, lineHeight: 1.8, marginTop: 8 }}>
+            این مدل چندزبانه و سبک است؛ پس از دانلود روی دستگاه اجرا می‌شود و فایل صوتی برای تبدیل به هیچ سرویس بیرونی ارسال نمی‌شود. دقت آن به کیفیت ضبط، لهجه و توان گوشی بستگی دارد.
+          </div>
+        </div>}
         {s.transcribeProvider !== "offline" && <div style={{ marginTop: 9 }}>
           <div className="mut" style={{ marginBottom: 4 }}>مدل صوت</div>
           <select className="inp" value={s.transcribeModel} onChange={(e) => upd({ transcribeModel: e.target.value })}>
@@ -121,7 +182,7 @@ export default function Settings({ storage, onChange }) {
           </select>
         </div>}
         <div className="mut" style={{ marginTop: 8, lineHeight: 1.8 }}>
-          تشخیص روی گوشی به موتور گفتار و بستهٔ زبان نصب‌شده وابسته است؛ گزینهٔ آفلاین اندروید ممکن است روی بعضی دستگاه‌ها فارسی را پشتیبانی نکند. در آن حالت، تبدیل ابری فقط با انتخاب آگاهانه و کلید سرویس انجام می‌شود.
+          در حالت آفلاین، گفتار پس از پایان ضبط با مدل Whisper روی گوشی تبدیل می‌شود؛ فایل صوتی برای تبدیل بارگذاری نمی‌شود. مدل را پیش از اولین استفاده، یک بار در همین صفحه دانلود کنید. گزینه‌های Groq و OpenAI همچنان تبدیل ابری هستند و به کلید API نیاز دارند.
         </div>
       </div>
 

@@ -5,7 +5,7 @@ import { finalizeAudio, patchInterview, saveInterview, deleteInterview, uid } fr
 import { getSettings, saveSettings, analysisKey } from "../settings";
 import { processInterview } from "../pipeline";
 import { fmtDur } from "../export";
-import { toast, ask } from "../ui";
+import { toast } from "../ui";
 import { OfflineSpeech } from "../native-bridge";
 import { QUESTION_SETS, questionSetFor } from "../questions";
 
@@ -58,38 +58,16 @@ export default function Record({ folders, onOpen }) {
     if (id) patchInterview(id, { transcript: next }, true).catch(() => {});
   }
   async function startSpeech(id) {
-    if (getSettings().transcribeProvider !== "offline") {
-      if (speechStartedRef.current) await stopSpeech();
-      setSpeechStatus("پس از پایان ضبط، تبدیل صوت با سرویس ابری انتخاب‌شده انجام می‌شود.");
+    if (speechStartedRef.current) await stopSpeech();
+    const provider = getSettings().transcribeProvider;
+    if (provider === "offline") {
+      setSpeechError("");
+      setSpeechStatus("حالت کاملاً آفلاین فعال است: صوت فقط روی همین گوشی ذخیره می‌شود و بعد از پایان ضبط با مدل Whisper به متن تبدیل خواهد شد.");
       return;
     }
-    try {
-      const info = await OfflineSpeech.isAvailable();
-      if (!info || !info.available) throw new Error("offline_unavailable");
-      await removeSpeechListeners();
-      listenersRef.current = [
-        await OfflineSpeech.addListener("partialResult", (ev) => {
-          const t = String(ev && ev.text || "").trim();
-          partialRef.current = t; setPartial(t);
-          setSpeechStatus("در حال شنیدن گفت‌وگو؛ متن موقت پایین نمایش داده می‌شود.");
-        }),
-        await OfflineSpeech.addListener("finalResult", (ev) => appendFinal(ev && ev.text)),
-        await OfflineSpeech.addListener("speechError", (ev) => {
-          const message = String(ev && ev.message || "");
-          setSpeechError(message || "تشخیص گفتار متوقف شد؛ ضبط صوت ادامه دارد.");
-          setSpeechStatus("تشخیص گفتار نیازمند بررسی است.");
-        })
-      ];
-      await OfflineSpeech.start({ language: "fa-IR" });
-      speechStartedRef.current = true;
-      setSpeechError("");
-      setSpeechStatus(info.onDevice ? "تشخیص گفتار روی دستگاه (آفلاین)" : "موتور تشخیص گفتار اندروید؛ ممکن است برای فارسی به اینترنت نیاز داشته باشد.");
-    } catch (e) {
-      await removeSpeechListeners();
-      setSpeechError("موتور تشخیص گفتار گوشی شروع نشد. مجوز میکروفن و سرویس گفتار اندروید/Google را بررسی کنید؛ فایل صوتی ضبط‌شده همچنان ذخیره می‌شود.");
-      setSpeechStatus("تشخیص گفتار فعال نیست");
-    }
+    setSpeechStatus("تبدیل صوت ابری پس از پایان ضبط و شروع پردازش انجام می‌شود.");
   }
+
   async function stopSpeech() {
     if (!speechStartedRef.current) return;
     try { await OfflineSpeech.stop(); } catch (e) {}
@@ -171,36 +149,12 @@ export default function Record({ folders, onOpen }) {
       await patchInterview(id, { status: "recorded" });
       setCandidate(""); setPosition("");
       const s = getSettings();
-      const liveTextUsable = finalTranscript.trim().length >= 20;
-      let cloudFallbackStarted = false;
-
-      // If Android's speech service produced no usable Persian text, offer a consent-based
-      // fallback that transcribes the saved recording with a configured cloud provider.
-      // Never upload audio automatically while the user has selected the on-device option.
-      if (!liveTextUsable && s.transcribeProvider === "offline") {
-        const cloudProvider = (s.apiKeys && s.apiKeys.groq) ? "groq"
-          : ((s.apiKeys && s.apiKeys.openai) || s.apiKey) ? "openai" : "";
-        if (cloudProvider) {
-          const providerName = cloudProvider === "groq" ? "Groq Whisper" : "OpenAI";
-          const approved = await ask(
-            "تشخیص گفتار گوشی متن قابل‌استفاده‌ای نساخت. آیا اجازه می‌دهید فایل صوتی این مصاحبه برای تبدیل به متن به سرویس " + providerName + " ارسال شود؟ این کار به اینترنت و کلید API معتبر نیاز دارد.",
-            "ارسال و تبدیل صوت"
-          );
-          if (approved) {
-            const model = cloudProvider === "groq" ? "whisper-large-v3" : "gpt-4o-mini-transcribe";
-            await saveSettings({ transcribeProvider: cloudProvider, transcribeModel: model });
-            await patchInterview(id, { transcript: "", status: "recorded", error: "" });
-            toast("تبدیل صوت ابری شروع شد؛ برای نتیجه به اتصال اینترنت و سهمیهٔ سرویس نیاز است.");
-            cloudFallbackStarted = true;
-            processInterview(id);
-          } else {
-            toast("صوت ذخیره شد؛ برای ساخت متن، در تنظیمات سرویس تبدیل صوت را انتخاب کنید.");
-          }
-        } else {
-          toast("صوت ذخیره شد اما متن ساخته نشد. در تنظیمات، Groq یا OpenAI را برای تبدیل صوت انتخاب و کلید API معتبر وارد کنید.");
-        }
+      if (s.transcribeProvider === "offline") {
+        // Transcribe saved audio locally every time; analysis remains governed by the existing opt-in.
+        processInterview(id, { transcribeOnly: !s.autoProcess });
+      } else if (s.autoProcess && analysisKey(s)) {
+        processInterview(id);
       }
-      if (!cloudFallbackStarted && s.autoProcess && analysisKey(s) && (liveTextUsable || s.transcribeProvider !== "offline")) processInterview(id);
       onOpen(id);
     }
     idRef.current = "";
@@ -255,10 +209,10 @@ export default function Record({ folders, onOpen }) {
       </div>}
 
       {(active || transcript || speechError) && <div className="card">
-        <div className="row" style={{ marginBottom: 8 }}><AudioLines size={17} /><b className="grow">متن زندهٔ گفت‌وگو</b><span className="mut">{transcript.trim() ? transcript.trim().split(/\s+/).length + " واژه" : "در انتظار گفتار"}</span></div>
-        <textarea className="inp tx" rows={7} readOnly value={visibleTranscript} placeholder={getSettings().transcribeProvider === "offline" ? "پس از شروع ضبط، موتور گفتار گوشی متن را اینجا می‌نویسد…" : "تبدیل ابری پس از پایان ضبط و شروع پردازش انجام می‌شود."} style={{ minHeight: 140, maxHeight: 260, resize: "vertical" }} />
+        <div className="row" style={{ marginBottom: 8 }}><AudioLines size={17} /><b className="grow">{getSettings().transcribeProvider === "offline" ? "متن گفت‌وگو (پس از ضبط)" : "متن گفت‌وگو"}</b><span className="mut">{transcript.trim() ? transcript.trim().split(/\s+/).length + " واژه" : "در انتظار گفتار"}</span></div>
+        <textarea className="inp tx" rows={7} readOnly value={visibleTranscript} placeholder={getSettings().transcribeProvider === "offline" ? "پس از پایان ضبط، مدل Whisper متن را به‌صورت آفلاین می‌سازد…" : "تبدیل ابری پس از پایان ضبط و شروع پردازش انجام می‌شود."} style={{ minHeight: 140, maxHeight: 260, resize: "vertical" }} />
         {partial && <div className="mut" style={{ marginTop: 5 }}>جملهٔ در حال تشخیص، هنوز قطعی نیست.</div>}
-        {active && <div className="mut" style={{ marginTop: 6, lineHeight: 1.8 }}>متن تشخیص‌داده‌شده روی دستگاه ذخیره می‌شود. در سکوت، لهجه یا نویز شدید ممکن است خطا رخ دهد؛ متن نهایی را پیش از تحلیل بازبینی کنید.</div>}
+        {active && <div className="mut" style={{ marginTop: 6, lineHeight: 1.8 }}>در حالت آفلاین، صوت تا پایان ضبط روی گوشی ذخیره می‌شود و سپس مدل Whisper آن را پردازش می‌کند. در سکوت، لهجه یا نویز شدید ممکن است خطا رخ دهد؛ متن نهایی را پیش از تحلیل بازبینی کنید.</div>}
       </div>}
 
       {!analysisKey() && !active && <div className="card mut" style={{ lineHeight: 1.9 }}>

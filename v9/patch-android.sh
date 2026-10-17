@@ -11,6 +11,7 @@ add_perm() {
   fi
   grep -q "android.permission.$permission" "$MANIFEST" || { echo "::error::failed to add $permission"; exit 1; }
 }
+add_perm INTERNET '<uses-permission android:name="android.permission.INTERNET" />'
 add_perm RECORD_AUDIO '<uses-permission android:name="android.permission.RECORD_AUDIO" />'
 add_perm MODIFY_AUDIO_SETTINGS '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />'
 add_perm WAKE_LOCK '<uses-permission android:name="android.permission.WAKE_LOCK" />'
@@ -261,8 +262,57 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         registerPlugin(OfflineSpeechPlugin.class);
+        registerPlugin(OfflineWhisperPlugin.class);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 }
 JAVA
-echo "Android version 9 patch complete."
+
+# Install the native Whisper engine and offline speech plugin into the generated Capacitor project.
+NATIVE_DIR="android/app/src/main/cpp"
+JAVA_NATIVE_DIR="$(dirname "$MAIN")"
+mkdir -p "$NATIVE_DIR" "$NATIVE_DIR/whisper.cpp"
+WHISPER_ARCHIVE="/tmp/yavar-whisper-v1.9.4.tar.gz"
+curl -fsSL --retry 3 "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v1.9.4.tar.gz" -o "$WHISPER_ARCHIVE"
+tar -xzf "$WHISPER_ARCHIVE" --strip-components=1 -C "$NATIVE_DIR/whisper.cpp"
+cp native/CMakeLists.txt "$NATIVE_DIR/CMakeLists.txt"
+cp native/whisper_jni.cpp "$NATIVE_DIR/whisper_jni.cpp"
+cp native/OfflineWhisperPlugin.java "$JAVA_NATIVE_DIR/OfflineWhisperPlugin.java"
+sed -i "s/__PACKAGE__/$PKG/g" "$JAVA_NATIVE_DIR/OfflineWhisperPlugin.java"
+JNI_PKG="$(printf '%s' "$PKG" | tr '.' '/')"
+sed -i "s/__PACKAGE_SLASH__/$JNI_PKG/g" "$NATIVE_DIR/whisper_jni.cpp"
+
+# Enable the native CMake target for the ARM Android devices this app supports.
+python3 - "$GRADLE" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+if "abiFilters" not in text:
+    text = text.replace(
+        "    defaultConfig {",
+        '    defaultConfig {\n'
+        '        ndk { abiFilters "arm64-v8a", "armeabi-v7a" }\n'
+        '        externalNativeBuild { cmake { cppFlags "-std=c++17 -O3" } }\n',
+        1
+    )
+if 'path "src/main/cpp/CMakeLists.txt"' not in text:
+    block = (
+        '    externalNativeBuild {\n'
+        '        cmake {\n'
+        '            path "src/main/cpp/CMakeLists.txt"\n'
+        '            version "3.22.1"\n'
+        '        }\n'
+        '    }\n'
+    )
+    marker = "\n}\n\ndependencies"
+    if marker in text:
+        text = text.replace(marker, "\n" + block + "}\n\ndependencies", 1)
+    else:
+        raise SystemExit("Could not find the android block end in build.gradle")
+open(path, "w", encoding="utf-8").write(text)
+PY
+grep -q 'path "src/main/cpp/CMakeLists.txt"' "$GRADLE" || { echo "::error::CMake configuration missing"; exit 1; }
+test -s "$NATIVE_DIR/whisper.cpp/CMakeLists.txt"
+test -s "$JAVA_NATIVE_DIR/OfflineWhisperPlugin.java"
+
+echo "Android v9 patch complete; local Whisper engine configured."
