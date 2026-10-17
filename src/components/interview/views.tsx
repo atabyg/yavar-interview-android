@@ -346,7 +346,7 @@ function CaseScreen() {
       <Banner>
         فقط داده‌ای را بنویسید که برای مصاحبه لازم است. شناسه پرونده را کوتاه نگه دارید و نام را در نام فایل گزارش نگذارید.
       </Banner>
-      <Field label="شناسه پرونده" value={draft.code} onChange={(code) => setDraft({ ...draft, code })} />
+      <Field label="شناسه پرونده" value={draft.code} readOnly onChange={() => undefined} />
       <Field label="نام مستعار، اختیاری" value={draft.alias} onChange={(alias) => setDraft({ ...draft, alias })} />
       <Field label="نام مددجو (در صورت مجاز بودن ثبت)" value={draft.clientName ?? ""} onChange={(clientName) => setDraft({ ...draft, clientName })} />
       <Area label="مشخصات ضروری مددجو (حداقلی؛ اطلاعات غیرضروری/تشخیصی وارد نشود)" value={draft.clientDetails ?? ""} onChange={(event) => setDraft({ ...draft, clientDetails: event.target.value })} />
