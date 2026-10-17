@@ -340,7 +340,9 @@ function CaseScreen() {
         setDraft((current) => current ? ({ ...current,
           code: current.code.trim() ? current.code : suggested.caseCode ?? current.code,
           clientName: (current.clientName ?? "").trim() ? current.clientName : suggested.clientName ?? current.clientName,
+          clientDetails: (current.clientDetails ?? "").trim() ? current.clientDetails : suggested.clientDetails ?? current.clientDetails,
           expertName: current.expertName.trim() ? current.expertName : suggested.expertName ?? current.expertName,
+          expertDetails: (current.expertDetails ?? "").trim() ? current.expertDetails : suggested.expertDetails ?? current.expertDetails,
           center: current.center.trim() ? current.center : suggested.center ?? current.center,
         }) : current);
       }}>پیشنهاد تکمیل از متن گفتگو (نیازمند تأیید)</Btn>
@@ -1134,7 +1136,7 @@ function ApproveButton({ who, label, done }: { who: "expert" | "second"; label: 
 function ReportScreen() {
   const { active, state, patchActive } = useInterview();
   const [hash, setHash] = useState("");
-  const [pinOpen, setPinOpen] = useState<null | "save-pdf" | "share-pdf">(null);
+  const [pinOpen, setPinOpen] = useState<null | "save-pdf" | "share-pdf" | "export-xlsx">(null);
   const sheetRef = useRef<HTMLElement>(null);
   const result = active ? evaluate(active) : null;
   const finalIssues = active ? runFinalTranscriptReview(active) : [];
@@ -1177,7 +1179,7 @@ async function exportPdfToPublicFolder() {
           <Printer className="size-4" aria-hidden /> ذخیره PDF در پوشه عمومی
         </Btn>
         <Btn onClick={() => setPinOpen("share-pdf")}>اشتراک PDF با برنامه‌های دیگر</Btn>
-        <Btn onClick={() => { downloadCaseWorkbook(active); patchActive((file) => withAudit(file, "export_xlsx", "user_triggered_xlsx")); }}><FileSpreadsheet className="size-4" aria-hidden /> دریافت Excel (.xlsx)</Btn>
+        <Btn onClick={() => setPinOpen("export-xlsx")}><FileSpreadsheet className="size-4" aria-hidden /> دریافت Excel (.xlsx)</Btn>
         {/* Raw/JSON/HTML exports remain disabled until encrypted export is implemented. */}
       </div>
       <p className="no-print text-xs leading-normal text-muted">خروجی HTML، JSON و transcript خام تا زمان پیاده‌سازی خروجی رمزنگاری‌شده غیرفعال‌اند. گزارش PDF به‌طور پیش‌فرض متن کامل مکالمه را شامل نمی‌شود.</p>
@@ -1258,6 +1260,10 @@ async function exportPdfToPublicFolder() {
           onSuccess={() => {
             if (pinOpen === "save-pdf") void exportPdfToPublicFolder().catch((error: unknown) => window.alert(error instanceof Error ? error.message : "ذخیره PDF ناموفق بود."));
             if (pinOpen === "share-pdf") void sharePdfWithOtherApps().catch((error: unknown) => window.alert(error instanceof Error ? error.message : "اشتراک PDF ناموفق بود."));
+            if (pinOpen === "export-xlsx") {
+              try { downloadCaseWorkbook(active); patchActive((file) => withAudit(file, "export_xlsx", "user_triggered_xlsx")); }
+              catch (error) { window.alert(error instanceof Error ? error.message : "ساخت فایل Excel ناموفق بود."); }
+            }
             setPinOpen(null);
           }}
         />
