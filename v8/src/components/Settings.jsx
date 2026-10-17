@@ -20,9 +20,18 @@ export default function Settings({ storage, onChange }) {
     const k = key.trim();
     if (!/^sk-/.test(k)) { toast("کلید باید با sk- شروع شود."); return; }
     setBusy(true);
-    try { await testKey(k); await upd({ apiKey: k }); setKey(""); toast("کلید معتبر است و برای همیشه ذخیره شد."); }
-    catch (e) { if (e && e.status === 401) toast(friendly(e)); else { await upd({ apiKey: k }); setKey(""); toast("کلید ذخیره شد (بررسی اینترنت ممکن نشد)."); } }
-    setBusy(false);
+    try {
+      await testKey(k);
+      await upd({ apiKey: k });
+      setKey("");
+      toast("کلید در حافظهٔ محلی ذخیره شد؛ دسترسی به API به وضعیت حساب و اعتبار آن وابسته است.");
+    } catch (e) {
+      if (e && e.status === 401) toast(friendly(e));
+      else {
+        await upd({ apiKey: k }); setKey("");
+        toast("کلید ذخیره شد، اما اتصال بررسی نشد.");
+      }
+    } finally { setBusy(false); }
   }
   async function delKey() { if (await ask("کلید API از این دستگاه حذف شود؟", "حذف", true)) { await upd({ apiKey: "" }); toast("کلید حذف شد"); } }
 
@@ -31,7 +40,7 @@ export default function Settings({ storage, onChange }) {
       <div className="card">
         <h4><KeyRound size={14} style={{ verticalAlign: "-2px" }} /> کلید OpenAI</h4>
         {s.apiKey ? (
-          <div className="row"><div className="grow"><div style={{ direction: "ltr", textAlign: "right", fontFamily: "monospace", fontSize: 13 }}>{masked}</div><div className="mut"><ShieldCheck size={12} /> ذخیره‌شده تا زمانی که خودتان حذف کنید</div></div>
+          <div className="row"><div className="grow"><div style={{ direction: "ltr", textAlign: "right", fontFamily: "monospace", fontSize: 13 }}>{masked}</div><div className="mut"><ShieldCheck size={12} /> ذخیره‌شده تا حذف دستی؛ در حافظهٔ محلی و بدون رمزگذاری اختصاصی</div></div>
             <button className="ib red" onClick={delKey}><Trash2 size={18} /></button></div>
         ) : null}
         <div className="row" style={{ marginTop: s.apiKey ? 12 : 0 }}>
@@ -45,14 +54,12 @@ export default function Settings({ storage, onChange }) {
         <Sw on={s.autoProcess} set={(v) => upd({ autoProcess: v })} label="پردازش خودکار پس از پایان ضبط" />
         <div className="mut" style={{ margin: "8px 0 4px" }}>مدل تبدیل صدا به متن</div>
         <select className="inp" value={s.transcribeModel} onChange={(e) => upd({ transcribeModel: e.target.value })}>
-          <option value="gpt-4o-transcribe">gpt-4o-transcribe (دقیق‌تر)</option>
-          <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe (ارزان‌تر)</option>
-          <option value="whisper-1">whisper-1</option>
+          <option value="gpt-transcribe">gpt-transcribe (مدل پیشنهادی برای فایل صوتی)</option>
         </select>
         <div className="mut" style={{ margin: "10px 0 4px" }}>مدل تحلیل</div>
         <select className="inp" value={s.analyzeModel} onChange={(e) => upd({ analyzeModel: e.target.value })}>
-          <option value="gpt-4o-mini">gpt-4o-mini (سریع و ارزان)</option>
-          <option value="gpt-4o">gpt-4o (دقیق‌تر)</option>
+          <option value="gpt-4o-mini">gpt-4o-mini (سریع و اقتصادی)</option>
+          <option value="gpt-4o">gpt-4o</option>
           <option value="gpt-4.1">gpt-4.1</option>
         </select>
       </div>
