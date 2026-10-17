@@ -223,7 +223,7 @@ export function WorkspaceScreen() {
 
 function HomeScreen() {
   const { state, addCase, openCase } = useInterview();
-  const open = state.cases.filter((file) => file.status !== "signed");
+  const open = state.cases.filter((file) => file.status !== "signed" && !file.archivedAt);
   return (
     <div className="flex flex-col gap-4 py-4">
       <div className="flex flex-wrap gap-2">
@@ -236,7 +236,7 @@ function HomeScreen() {
         <Btn onClick={() => addCase(createEducationalCase(), "summary")}>پرونده آموزشی</Btn>
       </div>
       <Section title="ادامه جلسه‌های باز" files={open} onOpen={openCase} empty="جلسهٔ بازی نیست." />
-      <Section title="همه پرونده‌ها" files={state.cases} onOpen={openCase} empty="هنوز پرونده‌ای ثبت نشده." />
+      <Section title="همه پرونده‌ها" files={state.cases.filter((file) => !file.archivedAt)} onOpen={openCase} empty="هنوز پرونده‌ای ثبت نشده." />
     </div>
   );
 }
@@ -1311,7 +1311,7 @@ async function exportPdfToPublicFolder() {
     const html = buildReportHtml();
     if (isNativeAndroid()) {
       await savePdfToPublicStorage(`${name}.pdf`, html);
-      patchActive((file) => withAudit(file, "export_pdf_save_dialog", "user_selected_public_location"), false);
+      patchActive((file) => withAudit(file, "pdf_print_dialog_opened", "کاربر باید ذخیره را در پنجره چاپ اندروید تأیید کند."), false);
     } else {
       window.setTimeout(() => window.print(), 150);
     }
@@ -1330,9 +1330,9 @@ async function exportPdfToPublicFolder() {
     <div className="flex flex-col gap-3 py-4">
       <div className="no-print flex flex-wrap gap-2">
         <Btn tone="primary" onClick={() => setPinOpen("save-pdf")}>
-          <Printer className="size-4" aria-hidden /> ذخیره PDF در پوشه عمومی
+          <Printer className="size-4" aria-hidden /> چاپ / ذخیره PDF
         </Btn>
-        <Btn onClick={() => setPinOpen("share-pdf")}>اشتراک PDF با برنامه‌های دیگر</Btn>
+        <Btn onClick={() => setPinOpen("share-pdf")}>بازکردن پنجره چاپ / ذخیره</Btn>
         <Btn onClick={() => setPinOpen("export-xlsx")}><FileSpreadsheet className="size-4" aria-hidden /> دریافت Excel (.xlsx)</Btn>
         {/* Raw/JSON/HTML exports remain disabled until encrypted export is implemented. */}
       </div>
@@ -1485,8 +1485,8 @@ function SettingsScreen() {
           pinRecord={state.pin}
           onClose={() => setPinOpen(null)}
           onSuccess={() => {
-            if (pinOpen === "wipe") void wipeAll();
-            if (pinOpen === "delete") void removeActive();
+            if (pinOpen === "wipe") void wipeAll().catch((error: unknown) => window.alert(error instanceof Error ? error.message : "پاک‌سازی کامل نشد؛ داده‌ها حفظ شدند."));
+            if (pinOpen === "delete") void removeActive().catch((error: unknown) => window.alert(error instanceof Error ? error.message : "حذف پرونده کامل نشد؛ داده‌ها حفظ شدند."));
             if (pinOpen === "phrase") patchSettings({ endPhrase: phrase });
             setPinOpen(null);
           }}
