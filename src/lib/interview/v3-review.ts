@@ -181,13 +181,13 @@ export function runFinalTranscriptReview(file: CaseFile): FinalReviewIssue[] {
   for (const segment of file.segments) {
     const review = reviewSegment(segment);
     if (review.suggestedSpeaker === "overlap" || review.speakerConfidence < 0.7) {
-      issues.push({ severity: "warning", code: "speaker_review", message: `گوینده این بخش نیازمند تأیید انسانی است: «${segment.textRaw.slice(0, 90)}»` });
+      issues.push({ severity: "warning", code: "speaker_review", message: `گوینده قطعه ${segment.id.slice(0, 8)} نیازمند تأیید انسانی است؛ متن اصلی را در پرونده بررسی کنید.` });
     }
     if (segment.confidence !== null && segment.confidence < 0.65) {
-      issues.push({ severity: "warning", code: "low_asr_confidence", message: `اطمینان تشخیص گفتار پایین است؛ صوت با متن تطبیق داده شود: «${segment.textRaw.slice(0, 90)}»` });
+      issues.push({ severity: "warning", code: "low_asr_confidence", message: `اطمینان تشخیص گفتار در قطعه ${segment.id.slice(0, 8)} پایین است؛ صوت با متن تطبیق داده شود.` });
     }
     if (/(اشتباه گفتم|برعکس|اصلاح می.?کنم|نه منظورم|تناقض|یادم نیست|مطمئن نیستم)/u.test(normalizeFa(segment.textRaw))) {
-      issues.push({ severity: "warning", code: "self_correction_or_uncertainty", message: `در این بخش نشانه خوداصلاحی یا عدم‌اطمینان وجود دارد؛ کارشناس متن و پاسخ مرتبط را دوباره بررسی کند: «${segment.textRaw.slice(0, 90)}»` });
+      issues.push({ severity: "warning", code: "self_correction_or_uncertainty", message: `در قطعه ${segment.id.slice(0, 8)} نشانه خوداصلاحی یا عدم‌اطمینان وجود دارد؛ متن و پاسخ مرتبط دوباره بررسی شود.` });
     }
     if (/[\p{L}]{1,2}\s+[\p{L}]{1,2}/u.test(segment.textRaw)) {
       issues.push({ severity: "info", code: "possible_asr_fragment", message: "احتمال خطای تشخیص یا قطعه‌بندی متن وجود دارد؛ متن صوت با transcript تطبیق داده شود." });
