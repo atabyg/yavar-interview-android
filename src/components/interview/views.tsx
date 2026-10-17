@@ -856,7 +856,7 @@ function QuestionsScreen() {
         </Panel>
         <Panel>
           <div className="flex items-center gap-2"><Sparkles className="size-5" aria-hidden /><h2 className="font-medium">کمک هوش مصنوعی (اختیاری و ابری)</h2></div>
-          <p className="mt-2 text-sm leading-normal text-muted">فقط قطعه‌های متنی که گوینده‌شان «مددجو» علامت خورده برای سرویس انتخابی ارسال می‌شوند؛ صوت، نام مستعار و شناسه پرونده ارسال نمی‌شوند. این انتقال ممکن است داده حساس را از گوشی خارج کند. رضایت مستقل همین پرونده لازم است.</p>
+          <p className="mt-2 text-sm leading-normal text-muted">فقط متن قطعه‌هایی که گوینده‌شان «مددجو» علامت خورده به سرویس انتخابی ارسال می‌شوند؛ صوت، نام مستعار و شناسه پرونده ارسال نمی‌شوند، اما خود متن ممکن است نام، شماره تماس یا اطلاعات درمانی/قضایی داشته باشد. پیش از درخواست، متن گفتگو را بازبینی و اطلاعات شناسایی‌کننده را دستی حذف/پوشانده کنید. این انتقال داده حساس را از گوشی خارج می‌کند و رضایت مستقل همین پرونده لازم است.</p>
           <CheckRow checked={active.cloudAiConsent} onChange={(cloudAiConsent) => patchActive((file) => withAudit({ ...file, cloudAiConsent }, "ai_cloud_consent", cloudAiConsent ? "granted" : "revoked"), false)} label="پس از توضیح پیام بالا، برای ارسال متن قطعه‌های منتسب به مددجو به سرویس ابری رضایت می‌دهم." />
           <label className="block text-sm text-muted">ارائه‌دهنده</label>
           <select className="min-h-12 w-full rounded-sm border border-line bg-surface px-3" value={aiProvider} onChange={(event) => setAiProvider(event.target.value as AiProvider)}>
