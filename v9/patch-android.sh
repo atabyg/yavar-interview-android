@@ -284,34 +284,54 @@ sed -i "s|__PACKAGE_SLASH__|$JNI_PKG|g" "$NATIVE_DIR/whisper_jni.cpp"
 
 # Enable the native CMake target for the ARM Android devices this app supports.
 python3 - "$GRADLE" <<'PY'
+import re
 import sys
+
 path = sys.argv[1]
 text = open(path, encoding="utf-8").read()
+
+if "android {" not in text:
+    raise SystemExit("Could not find android block in build.gradle")
+
 if "abiFilters" not in text:
-    text = text.replace(
-        "    defaultConfig {",
-        '    defaultConfig {\n'
-        '        ndk { abiFilters "arm64-v8a", "armeabi-v7a" }\n'
-        '        externalNativeBuild { cmake { cppFlags "-std=c++17 -O3" } }\n',
-        1
+    # Add the ARM ABIs supported by the local Whisper native library.
+    text = re.sub(
+        r"(?m)^(\s*defaultConfig\s*\{)",
+        r'\1\n        ndk { abiFilters "arm64-v8a", "armeabi-v7a" }'
+        '\n        externalNativeBuild { cmake { cppFlags "-std=c++17 -O3"; arguments "-DCMAKE_BUILD_TYPE=Release" } }',
+        text,
+        count=1,
     )
+
 if 'path "src/main/cpp/CMakeLists.txt"' not in text:
+    start = re.search(r"(?m)^android\s*\{", text)
+    if not start:
+        raise SystemExit("Could not locate the top-level android block")
+    end = text.find("\n}\n", start.end())
+    if end < 0:
+        raise SystemExit("Could not locate the closing brace of the android block")
     block = (
         '    externalNativeBuild {\n'
         '        cmake {\n'
         '            path "src/main/cpp/CMakeLists.txt"\n'
         '            version "3.22.1"\n'
         '        }\n'
-        '    }\n'
+        '    }'
     )
-    marker = "\n}\n\ndependencies"
-    if marker in text:
-        text = text.replace(marker, "\n" + block + "}\n\ndependencies", 1)
-    else:
-        raise SystemExit("Could not find the android block end in build.gradle")
+    text = text[:end] + "\n" + block + text[end:]
+
+# Sanity checks: CMake configuration must be within the android block, not repositories.
+android_start = re.search(r"(?m)^android\s*\{", text)
+repo_start = re.search(r"(?m)^repositories\s*\{", text)
+cmake_path = text.find('path "src/main/cpp/CMakeLists.txt"')
+android_end = text.find("\n}\n", android_start.end())
+if cmake_path < android_start.end() or cmake_path > android_end:
+    raise SystemExit("CMake configuration was not inserted inside the android block")
+if repo_start and repo_start < cmake_path < text.find("\n}\n", repo_start.end()):
+    raise SystemExit("CMake configuration was incorrectly inserted inside repositories")
+
 open(path, "w", encoding="utf-8").write(text)
-PY
-grep -q 'path "src/main/cpp/CMakeLists.txt"' "$GRADLE" || { echo "::error::CMake configuration missing"; exit 1; }
+PYgrep -q 'path "src/main/cpp/CMakeLists.txt"' "$GRADLE" || { echo "::error::CMake configuration missing"; exit 1; }
 test -s "$NATIVE_DIR/whisper.cpp/CMakeLists.txt"
 test -s "$JAVA_NATIVE_DIR/OfflineWhisperPlugin.java"
 
