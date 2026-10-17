@@ -1444,9 +1444,9 @@ function SettingsScreen() {
         <h2 className="font-medium">هوش مصنوعی</h2>
         <label className="mb-1 block text-sm">ارائه‌دهنده تحلیل متن</label>
         <select className="min-h-12 w-full rounded-sm border border-line bg-surface px-3" value={settingsProvider} onChange={(event) => { const provider = event.target.value as AiProvider; setSettingsProvider(provider); patchSettings({ aiProvider: provider }); setAiKeyDraft(getSessionAiApiKey(provider)); setAiKeyReady(hasSessionAiApiKey(provider)); }}>
-          <option value="groq">Groq</option><option value="deepseek">DeepSeek</option><option value="openai">OpenAI</option>
+          <option value="groq">Groq (رونویسی صوت + متن)</option><option value="deepseek">DeepSeek (متن)</option><option value="openai">OpenAI (متن)</option><option value="openrouter">OpenRouter (مدل‌های متغیر/رایگان)</option><option value="mistral">Mistral (متن)</option><option value="cerebras">Cerebras (متن)</option>
         </select>
-        <Field label="کلید API (نمایش آشکار)" value={aiKeyDraft} onChange={setAiKeyDraft} type="text" />
+        <Field label="کلید API" value={aiKeyDraft} onChange={setAiKeyDraft} type="password" />
         <div className="grid grid-cols-2 gap-2">
           <Btn tone="primary" onClick={() => { setSessionAiApiKey(aiKeyDraft, settingsProvider); patchSettings({ aiProvider: settingsProvider }); setAiKeyReady(hasSessionAiApiKey(settingsProvider)); }}>
             ذخیره تا پایان این اجرا
@@ -1456,7 +1456,7 @@ function SettingsScreen() {
           </Btn>
         </div>
         <p className="text-xs text-muted">{aiKeyReady ? `کلید ${settingsProvider} در حافظه موقت حاضر است.` : `کلید ${settingsProvider} ثبت نشده است.`}</p>
-        <p className="text-xs text-muted">کلیدها فقط تا بسته‌شدن برنامه در حافظه می‌مانند. تبدیل صوت همچنان به کلید Groq نیاز دارد: https://console.groq.com/keys</p>
+        <p className="text-xs text-muted">کلید فقط در حافظه این اجرا می‌ماند؛ در برنامهٔ کلاینت قابل استخراج است. رونویسی صوت و پیشنهاد نقش گوینده همچنان فقط از Groq استفاده می‌کنند. سایر ارائه‌دهندگان فقط تحلیل متنی را انجام می‌دهند. رایگان‌بودن، سهمیه و دسترسی هر مدل تضمین‌شده نیست.</p>
       </Panel>
       <label className="block text-sm text-muted">قفل خودکار</label>
       <div className="grid grid-cols-4 gap-2">
@@ -1499,7 +1499,7 @@ function SettingsScreen() {
 function MethodScreen() {
   return (
     <div className="no-print flex flex-col gap-3 py-4 text-sm leading-normal">
-      <h1 className="text-xl font-medium">راهنمای سریع نسخه ۴</h1>
+      <h1 className="text-xl font-medium">راهنمای سریع نسخه ۵</h1>
       <Panel>
         <h2 className="font-medium">مصاحبه خودکار</h2>
         <ol className="mt-2 list-decimal pe-4">
