@@ -232,6 +232,7 @@ export function closeBlockers(c: CaseFile, result: EvalResult): string[] {
     blocks.push("تأیید دوم باید به نام فرد دیگری باشد؛ برنامه تأیید دوگانه را یکی نمی‌کند");
   }
   if (c.kind === "urgent" && !c.urgentReason.trim()) blocks.push("علت استفاده از نسخه فوری ثبت نشده است");
+  blocks.push("تأیید دوگانه مکتوب رئیس و معاون در فرم F04 باید خارج از این ثبت کارشناسی انجام و پیش از هر تعهد اجرایی کنترل شود؛ این نسخه جایگزین آن نیست");
   if (result.redLines.length > 0) blocks.push("وجود خط قرمز باز است؛ تأیید/تصمیم نهایی تا رفع مانع متوقف می‌شود");
   if (c.kind === "full" && !result.criticalGatePassed) blocks.push("دروازه حیاتی برقرار نیست؛ ح۱ تا ح۱۲ باید حداقل ۱۸ از ۲۴ و بدون صفر حل‌نشده داشته باشند");
   if (result.suggestion === "incomplete" || result.suggestion === "deduction_undocumented") {
