@@ -48,6 +48,9 @@ export interface Answer {
 
 export interface Deduction {
   requested: number;
+  /** Urgent interview only: bounded, separately documented dimensions (0..2 each). */
+  urgentEmotion?: 0 | 1 | 2;
+  urgentCraving?: 0 | 1 | 2;
   evidence: string;
   contextTime: string;
   repetition: string;
