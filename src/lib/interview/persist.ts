@@ -10,7 +10,7 @@ export const DEFAULT_SETTINGS: Settings = {
   endPhrase: "",
   allowBrowserSpeech: false,
   biometricEnabled: false,
-  aiProvider: "groq",
+  aiProvider: "deepseek",
   requirePinOnLaunch: true,
 };
 
@@ -91,7 +91,7 @@ export function loadSaved(): SavedState {
       pin: parsed.pin ?? null,
       failedAttempts: parsed.failedAttempts ?? 0,
       lockUntil: parsed.lockUntil ?? 0,
-      settings: { ...DEFAULT_SETTINGS, ...parsed.settings, endPhrase: parsed.settings?.endPhrase ?? "", allowBrowserSpeech: false, aiProvider: parsed.settings?.aiProvider ?? "groq", requirePinOnLaunch: parsed.settings?.requirePinOnLaunch ?? true },
+      settings: { ...DEFAULT_SETTINGS, ...parsed.settings, endPhrase: parsed.settings?.endPhrase ?? "", allowBrowserSpeech: false, aiProvider: parsed.settings?.aiProvider ?? "deepseek", requirePinOnLaunch: parsed.settings?.requirePinOnLaunch ?? true },
       cases: parsed.cases.map((rawCase) => {
         const file = rawCase as CaseFile;
         const audit = Array.isArray(file.audit) ? file.audit : [];
