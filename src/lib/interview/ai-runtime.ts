@@ -23,3 +23,10 @@ export function hasSessionAiApiKey(provider: Provider = "groq"): boolean {
 export function clearSessionAiApiKey(provider: Provider = "groq"): void {
   delete sessionAiApiKeys[provider];
 }
+
+/** Clear all in-memory credentials when the app is locked. */
+export function clearAllSessionAiApiKeys(): void {
+  for (const provider of Object.keys(sessionAiApiKeys) as Provider[]) {
+    delete sessionAiApiKeys[provider];
+  }
+}
