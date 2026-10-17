@@ -1,6 +1,5 @@
 import { Capacitor } from "@capacitor/core";
-import { Directory, Filesystem } from "@capacitor/filesystem";
-import { Share } from "@capacitor/share";
+import { saveFileWithPicker } from "@/lib/interview/native-exports";
 
 // Android WebView cannot handle <a download> on blob: URLs or window.print().
 // This bridge routes exports through the native share sheet instead.
@@ -19,19 +18,9 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-async function shareBlob(blob: Blob, name: string): Promise<void> {
-  try {
-    const data = await blobToBase64(blob);
-    const written = await Filesystem.writeFile({
-      path: name,
-      data,
-      directory: Directory.Cache,
-    });
-    await Share.share({ title: name, url: written.uri, dialogTitle: "ذخیره یا ارسال فایل" });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!/cancel/i.test(message)) window.alert("خروجی گرفتن ناموفق بود.");
-  }
+async function saveBlob(blob: Blob, name: string): Promise<void> {
+  const data = await blobToBase64(blob);
+  await saveFileWithPicker(name, blob.type || "application/octet-stream", data);
 }
 
 export function installNativeBridge(): void {
@@ -54,7 +43,7 @@ export function installNativeBridge(): void {
   HTMLAnchorElement.prototype.click = function patchedClick(this: HTMLAnchorElement) {
     const blob = this.href.startsWith("blob:") ? blobs.get(this.href) : undefined;
     if (this.download && blob) {
-      void shareBlob(blob, this.download);
+      void saveBlob(blob, this.download).catch((error: unknown) => {\n        const message = error instanceof Error ? error.message : "ذخیره فایل ناموفق بود.";\n        window.alert(message);\n      });
       return;
     }
     originalClick.call(this);
