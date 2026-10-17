@@ -1012,10 +1012,10 @@ function TranscriptScreen() {
 }
 
 function QuestionsScreen() {
-  const { active, patchActive } = useInterview();
+  const { state, active, patchActive } = useInterview();
   const [openId, setOpenId] = useState("H01");
-  const [aiProvider, setAiProvider] = useState<AiProvider>("groq");
-  const [aiKey, setAiKey] = useState("");
+  const [aiProvider, setAiProvider] = useState<AiProvider>(state.settings.aiProvider ?? "groq");
+  const [aiKey, setAiKey] = useState(getSessionAiApiKey(state.settings.aiProvider ?? "groq"));
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiResult, setAiResult] = useState<AiAssistResult | null>(null);
@@ -1097,17 +1097,17 @@ function QuestionsScreen() {
           <p className="mt-2 text-sm leading-normal text-muted">فقط متن قطعه‌هایی که گوینده‌شان «مددجو» علامت خورده به سرویس انتخابی ارسال می‌شوند؛ صوت، نام مستعار و شناسه پرونده ارسال نمی‌شوند، اما خود متن ممکن است نام، شماره تماس یا اطلاعات درمانی/قضایی داشته باشد. پیش از درخواست، متن گفتگو را بازبینی و اطلاعات شناسایی‌کننده را دستی حذف/پوشانده کنید. این انتقال داده حساس را از گوشی خارج می‌کند و رضایت مستقل همین پرونده لازم است.</p>
           <CheckRow checked={active.cloudAiConsent} onChange={(cloudAiConsent) => patchActive((file) => withAudit({ ...file, cloudAiConsent }, "ai_cloud_consent", cloudAiConsent ? "granted" : "revoked"), false)} label="پس از توضیح پیام بالا، برای ارسال متن قطعه‌های منتسب به مددجو به سرویس ابری رضایت می‌دهم." />
           <label className="block text-sm text-muted">ارائه‌دهنده</label>
-          <select className="min-h-12 w-full rounded-sm border border-line bg-surface px-3" value={aiProvider} onChange={(event) => setAiProvider(event.target.value as AiProvider)}>
+          <select className="min-h-12 w-full rounded-sm border border-line bg-surface px-3" value={aiProvider} onChange={(event) => { const provider = event.target.value as AiProvider; setAiProvider(provider); setAiKey(getSessionAiApiKey(provider)); }}>
             <option value="groq">Groq API · Whisper + GPT OSS</option>
-            <option value="deepseek">DeepSeek API · deepseek-flash</option>
+            <option value="deepseek">DeepSeek API · deepseek-chat</option>
             <option value="openai">OpenAI API</option>
           </select>
-          <Field label="کلید API (فقط در حافظه همین اجرای برنامه)" type="password" value={aiKey} onChange={setAiKey} />
+          <Field label="کلید API (نمایش آشکار؛ فقط در حافظه این اجرا)" type="text" value={aiKey} onChange={setAiKey} />
           <Btn tone="primary" disabled={!active.cloudAiConsent || !aiKey.trim() || aiBusy || active.segments.every((s) => s.speaker !== "client")} onClick={() => {
             setAiError("");
             if (!active.cloudAiConsent) { setAiError("ابتدا رضایت مستقل تحلیل ابری را ثبت کنید."); return; }
             setAiBusy(true);
-            if (aiProvider === "groq") setSessionAiApiKey(aiKey);
+            setSessionAiApiKey(aiKey, aiProvider);
             void requestAiSuggestions({ provider: aiProvider, apiKey: aiKey, consentGranted: active.cloudAiConsent, segments: active.segments })
               .then((result) => setAiResult(result))
               .catch((error: unknown) => setAiError(error instanceof Error ? error.message : "تحلیل انجام نشد."))
@@ -1115,7 +1115,7 @@ function QuestionsScreen() {
           }}>{aiBusy ? "در حال دریافت پیشنهاد…" : "پیشنهاد ارتباط گفتگو با ۲۴ سؤال"}</Btn>
           {aiError ? <Banner tone="warn">{aiError}</Banner> : null}
           {aiResult ? <p className="text-sm">پیشنهادهای دریافتی: {faNum(aiResult.suggestions.length)} · مدل اعلام‌شده: {aiResult.model}. هیچ امتیاز یا تصمیمی خودکار تغییر نکرده است.</p> : null}
-          <p className="text-xs leading-normal text-muted">کلید واردشده برای Groq فقط تا بسته‌شدن برنامه در حافظه می‌ماند و در پرونده ذخیره نمی‌شود. محدودیت رایگان، هزینه، سیاست نگهداری داده و دسترسی شبکه را در حساب سرویس بررسی کنید؛ دسترسی از ایران تضمین‌شده نیست.</p>
+          <p className="text-xs leading-normal text-muted">کلید انتخاب‌شده فقط تا بسته‌شدن برنامه در حافظه می‌ماند و در پرونده ذخیره نمی‌شود. محدودیت رایگان، هزینه، سیاست نگهداری داده و دسترسی شبکه را در حساب سرویس بررسی کنید؛ دسترسی از ایران تضمین‌شده نیست.</p>
         </Panel>
         {aiSuggestion ? <Panel>
           <h2 className="font-medium">پیشنهاد AI برای {questionLabel(question.id)} · نیازمند تأیید کارشناس</h2>
