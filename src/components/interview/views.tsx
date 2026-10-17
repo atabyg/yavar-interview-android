@@ -287,6 +287,25 @@ function CaseScreen() {
   const [draft, setDraft] = useState(active);
   const [error, setError] = useState("");
   useEffect(() => setDraft(active), [active?.id, active?.updatedAt]);
+  useEffect(() => {
+    if (!active?.segments.length) return;
+    const suggested = suggestMetadata(active.segments);
+    setDraft((current) => {
+      if (!current || current.id !== active.id) return current;
+      const next = {
+        ...current,
+        code: current.code.trim() ? current.code : suggested.caseCode ?? current.code,
+        clientName: (current.clientName ?? "").trim() ? current.clientName : suggested.clientName ?? current.clientName,
+        clientDetails: (current.clientDetails ?? "").trim() ? current.clientDetails : suggested.clientDetails ?? current.clientDetails,
+        expertName: current.expertName.trim() ? current.expertName : suggested.expertName ?? current.expertName,
+        expertDetails: (current.expertDetails ?? "").trim() ? current.expertDetails : suggested.expertDetails ?? current.expertDetails,
+        center: current.center.trim() ? current.center : suggested.center ?? current.center,
+      };
+      return next.code === current.code && next.clientName === current.clientName &&
+        next.clientDetails === current.clientDetails && next.expertName === current.expertName &&
+        next.expertDetails === current.expertDetails && next.center === current.center ? current : next;
+    });
+  }, [active?.id, active?.updatedAt, active?.segments.length]);
   if (!active || !draft) return <NeedCase />;
 
   function save() {
