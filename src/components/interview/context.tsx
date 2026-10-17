@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { CaseFile, PinRecord, Settings, View } from "@/lib/interview/types";
+import { clearAllSessionAiApiKeys } from "@/lib/interview/ai-runtime";
 import {
   DEFAULT_SETTINGS,
   createPin,
@@ -88,11 +89,13 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     if (!state.unlocked || state.settings.autoLockMin <= 0) return;
     const wait = state.settings.autoLockMin * 60_000;
     let timer = window.setTimeout(() => {
+      clearAllSessionAiApiKeys();
       setState((current) => ({ ...current, unlocked: false, view: "lock" }));
     }, wait);
     const bump = () => {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
+        clearAllSessionAiApiKeys();
         setState((current) => ({ ...current, unlocked: false, view: "lock" }));
       }, wait);
     };
@@ -128,6 +131,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       return "bad";
     },
     lock() {
+      clearAllSessionAiApiKeys();
       setState((current) => ({ ...current, unlocked: false, view: "lock" }));
     },
     go(view: View) {

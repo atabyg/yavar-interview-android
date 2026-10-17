@@ -19,7 +19,7 @@ import { clearSessionAiApiKey, getSessionAiApiKey, hasSessionAiApiKey, setSessio
 import { QUESTIONS, RULES_META, questionById, scopeIds } from "@/lib/interview/rules";
 import { SUGGESTION_LABEL, canonicalBody, closeBlockers, evaluate, scoreAllowed } from "@/lib/interview/scoring";
 import type { Answer, AnswerStatus, CaseFile, Segment, Speaker } from "@/lib/interview/types";
-import { applyAiSuggestionToCase, requestAiSuggestions, suggestTranscriptSpeakersWithGroq, transcribeAudioWithGroq } from "@/lib/interview/ai-assist";
+import { applyAiSuggestionToCase, requestAiSuggestions, suggestTranscriptSpeakersWithGroq, transcribeAudioWithGroq, testDeepSeekConnection } from "@/lib/interview/ai-assist";
 import type { AiAssistResult, AiProvider, AiQuestionSuggestion } from "@/lib/interview/ai-assist";
 import { isNativeAndroid, savePdfToPublicStorage, sharePdf } from "@/lib/interview/native-exports";
 import { getMissingCaseFields, questionCompletionFromSegments, reviewSegment, runFinalTranscriptReview, suggestMetadata } from "@/lib/interview/v3-review";
@@ -744,7 +744,7 @@ function RecordScreen() {
             for (const segment of classifiedSegments) allById.set(segment.id, segment);
             const allSegments = Array.from(allById.values());
 
-            const metadataProvider = state.settings.aiProvider ?? "groq";
+            const metadataProvider = state.settings.aiProvider ?? "deepseek";
             const metadataKey = getSessionAiApiKey(metadataProvider);
             if (active.cloudAiConsent && metadataKey) {
               try {
@@ -777,7 +777,7 @@ function RecordScreen() {
 
             if (classifiedSegments.some((segment) => segment.speaker === "client")) {
               setProcessingMessage("در حال ساخت پیشنهادهای هوش مصنوعی از متن…");
-              const textProvider = state.settings.aiProvider ?? "groq";
+              const textProvider = state.settings.aiProvider ?? "deepseek";
               const textKey = getSessionAiApiKey(textProvider);
               if (!textKey) throw new Error("برای ارائه‌دهنده انتخاب‌شده، کلید API را در تنظیمات وارد کنید؛ رونویسی صوت ممکن است انجام شده باشد.");
               const result = await requestAiSuggestions({
@@ -1016,8 +1016,8 @@ function TranscriptScreen() {
 function QuestionsScreen() {
   const { state, active, patchActive } = useInterview();
   const [openId, setOpenId] = useState("H01");
-  const [aiProvider, setAiProvider] = useState<AiProvider>(state.settings.aiProvider ?? "groq");
-  const [aiKey, setAiKey] = useState(getSessionAiApiKey(state.settings.aiProvider ?? "groq"));
+  const [aiProvider, setAiProvider] = useState<AiProvider>(state.settings.aiProvider ?? "deepseek");
+  const [aiKey, setAiKey] = useState(getSessionAiApiKey(state.settings.aiProvider ?? "deepseek"));
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiResult, setAiResult] = useState<AiAssistResult | null>(null);
@@ -1453,9 +1453,11 @@ function SettingsScreen() {
   const { state, patchSettings, wipeAll, removeActive, active, lock } = useInterview();
   const [pinOpen, setPinOpen] = useState<null | "wipe" | "delete" | "phrase">(null);
   const [phrase, setPhrase] = useState(state.settings.endPhrase);
-  const [settingsProvider, setSettingsProvider] = useState<AiProvider>(state.settings.aiProvider ?? "groq");
-  const [aiKeyDraft, setAiKeyDraft] = useState(getSessionAiApiKey(state.settings.aiProvider ?? "groq"));
-  const [aiKeyReady, setAiKeyReady] = useState(hasSessionAiApiKey(state.settings.aiProvider ?? "groq"));
+  const [settingsProvider, setSettingsProvider] = useState<AiProvider>(state.settings.aiProvider ?? "deepseek");
+  const [aiKeyDraft, setAiKeyDraft] = useState(getSessionAiApiKey(state.settings.aiProvider ?? "deepseek"));
+  const [aiKeyReady, setAiKeyReady] = useState(hasSessionAiApiKey(state.settings.aiProvider ?? "deepseek"));
+  const [connectionTestBusy, setConnectionTestBusy] = useState(false);
+  const [connectionTestMessage, setConnectionTestMessage] = useState("");
   return (
     <div className="no-print flex flex-col gap-3 py-4">
       <h1 className="text-xl font-medium">تنظیمات</h1>
@@ -1469,7 +1471,7 @@ function SettingsScreen() {
         <select className="min-h-12 w-full rounded-sm border border-line bg-surface px-3" value={settingsProvider} onChange={(event) => { const provider = event.target.value as AiProvider; setSettingsProvider(provider); patchSettings({ aiProvider: provider }); setAiKeyDraft(getSessionAiApiKey(provider)); setAiKeyReady(hasSessionAiApiKey(provider)); }}>
           <option value="groq">Groq (رونویسی صوت + متن)</option><option value="deepseek">DeepSeek (متن)</option><option value="openai">OpenAI (متن)</option><option value="openrouter">OpenRouter (مدل‌های متغیر/رایگان)</option><option value="mistral">Mistral (متن)</option><option value="cerebras">Cerebras (متن)</option>
         </select>
-        <Field label="کلید API" value={aiKeyDraft} onChange={setAiKeyDraft} type="password" />
+        <Field label="کلید API (فقط حافظه همین اجرا)" value={aiKeyDraft} onChange={setAiKeyDraft} type="password" />
         <div className="grid grid-cols-2 gap-2">
           <Btn tone="primary" onClick={() => { setSessionAiApiKey(aiKeyDraft, settingsProvider); patchSettings({ aiProvider: settingsProvider }); setAiKeyReady(hasSessionAiApiKey(settingsProvider)); }}>
             ذخیره تا پایان این اجرا
@@ -1478,8 +1480,20 @@ function SettingsScreen() {
             حذف کلید
           </Btn>
         </div>
+        {settingsProvider === "deepseek" ? <Btn disabled={!aiKeyDraft.trim() || connectionTestBusy} onClick={() => {
+          setConnectionTestBusy(true);
+          setConnectionTestMessage("");
+          void testDeepSeekConnection(aiKeyDraft).then((model) => {
+            setSessionAiApiKey(aiKeyDraft, "deepseek");
+            patchSettings({ aiProvider: "deepseek" });
+            setAiKeyReady(true);
+            setConnectionTestMessage(`اتصال موفق است؛ مدل پاسخ‌گو: ${model}. هیچ اطلاعات پرونده‌ای در این آزمایش ارسال نشد.`);
+          }).catch((error: unknown) => setConnectionTestMessage(error instanceof Error ? error.message : "آزمایش اتصال ناموفق بود."))
+            .finally(() => setConnectionTestBusy(false));
+        }}>{connectionTestBusy ? "در حال آزمایش اتصال…" : "آزمایش اتصال DeepSeek (بدون پرونده)"}</Btn> : null}
+        {connectionTestMessage ? <Banner tone={connectionTestMessage.startsWith("اتصال موفق") ? "neutral" : "warn"}>{connectionTestMessage}</Banner> : null}
         <p className="text-xs text-muted">{aiKeyReady ? `کلید ${settingsProvider} در حافظه موقت حاضر است.` : `کلید ${settingsProvider} ثبت نشده است.`}</p>
-        <p className="text-xs text-muted">کلید فقط در حافظه این اجرا می‌ماند؛ در برنامهٔ کلاینت قابل استخراج است. رونویسی صوت و پیشنهاد نقش گوینده فقط از Groq استفاده می‌کنند؛ بقیه ارائه‌دهندگان برای تحلیل متن هستند. راه دریافت کلید: Groq console.groq.com/keys · DeepSeek platform.deepseek.com/api_keys · OpenAI platform.openai.com/api-keys · OpenRouter openrouter.ai/settings/keys · Mistral console.mistral.ai/api-keys · Cerebras cloud.cerebras.ai. مدل‌های رایگان، سهمیه و دسترسی منطقه‌ای ممکن است تغییر کنند و در این برنامه از راه دور تضمین نمی‌شوند.</p>
+        <p className="text-xs text-muted">کلید فقط در حافظه موقت همین اجرا می‌ماند و در پرونده یا تنظیمات ذخیره نمی‌شود؛ با این حال در برنامهٔ کلاینتی که مستقیم به API وصل می‌شود، کلید از نظر فنی کاملاً محرمانه نیست. برای استفاده سازمانی، کلید شخصی را داخل APK عمومی توزیع نکنید. رونویسی صوت و پیشنهاد نقش گوینده فقط از Groq استفاده می‌کنند؛ بقیه ارائه‌دهندگان برای تحلیل متن هستند. راه دریافت کلید: Groq console.groq.com/keys · DeepSeek platform.deepseek.com/api_keys · OpenAI platform.openai.com/api-keys · OpenRouter openrouter.ai/settings/keys · Mistral console.mistral.ai/api-keys · Cerebras cloud.cerebras.ai. مدل DeepSeek برای تحلیل متن به اینترنت و اعتبار/سهمیه حساب نیاز دارد؛ مدل‌های رایگان، سهمیه و دسترسی منطقه‌ای ممکن است تغییر کنند و در این برنامه از راه دور تضمین نمی‌شوند.</p>
       </Panel>
       <label className="block text-sm text-muted">قفل خودکار</label>
       <div className="grid grid-cols-4 gap-2">
@@ -1522,7 +1536,7 @@ function SettingsScreen() {
 function MethodScreen() {
   return (
     <div className="no-print flex flex-col gap-3 py-4 text-sm leading-normal">
-      <h1 className="text-xl font-medium">راهنمای سریع نسخه ۵</h1>
+      <h1 className="text-xl font-medium">راهنمای سریع نسخه ۶</h1>
       <Panel>
         <h2 className="font-medium">مصاحبه خودکار</h2>
         <ol className="mt-2 list-decimal pe-4">
