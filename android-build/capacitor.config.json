@@ -1,6 +1,6 @@
 {
-  "appId": "com.yavarshahrha.interview",
-  "appName": "مصاحبه یاورشهرها",
+  "appId": "com.yavarshahrha.interview.v4",
+  "appName": "یاور - نسخه ۴",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"
