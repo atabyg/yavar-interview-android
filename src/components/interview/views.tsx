@@ -485,6 +485,14 @@ function RecordScreen() {
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
+  const liveChunkRef = useRef<MediaRecorder | null>(null);
+  const liveChunkTimerRef = useRef<number | null>(null);
+  const liveStopPromiseRef = useRef<Promise<void> | null>(null);
+  const liveStopResolveRef = useRef<(() => void) | null>(null);
+  const liveSegmentsRef = useRef<Segment[]>([]);
+  const transcriptionQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const isLiveCaptureActiveRef = useRef(false);
+  const [liveTranscribedCount, setLiveTranscribedCount] = useState(0);
   secondsRef.current = seconds;
 
   useEffect(() => {
@@ -504,6 +512,77 @@ function RecordScreen() {
   if (!active) return <NeedCase />;
   const canRecord = active.consentRecorded && active.consentExplained && !active.consentRefused;
   const liveProgress = questionCompletionFromSegments(active.segments);
+
+  function startLiveChunk(stream: MediaStream, caseId: string, apiKey: string) {
+    if (!isLiveCaptureActiveRef.current) return;
+    let recorder: MediaRecorder;
+    const parts: Blob[] = [];
+    const offsetSec = secondsRef.current;
+    try {
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "";
+      recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      liveChunkRef.current = recorder;
+      const stopped = new Promise<void>((resolve) => { liveStopResolveRef.current = resolve; });
+      liveStopPromiseRef.current = stopped;
+      recorder.ondataavailable = (event) => { if (event.data.size) parts.push(event.data); };
+      recorder.onstop = () => {
+        if (liveChunkTimerRef.current !== null) window.clearTimeout(liveChunkTimerRef.current);
+        liveChunkTimerRef.current = null;
+        if (liveChunkRef.current === recorder) liveChunkRef.current = null;
+        const blob = new Blob(parts, { type: recorder.mimeType || "audio/webm" });
+        if (blob.size) {
+          const transcribeOne = async () => {
+            try {
+              const pieces = await transcribeAudioWithGroq({ apiKey, audio: blob });
+              const segments: Segment[] = pieces.map((piece) => {
+                const raw: Segment = {
+                  id: crypto.randomUUID(),
+                  speaker: "overlap",
+                  textRaw: piece.text,
+                  startSec: piece.startSec === null ? null : offsetSec + piece.startSec,
+                  endSec: piece.endSec === null ? null : offsetSec + piece.endSec,
+                  confidence: null,
+                  origin: "cloud_asr",
+                };
+                const review = reviewSegment(raw);
+                return {
+                  ...raw,
+                  speaker: review.speakerConfidence >= 0.52 ? review.suggestedSpeaker : "overlap",
+                  questionId: review.questionId ?? undefined,
+                  speakerConfidence: review.speakerConfidence,
+                  speakerSuggested: review.suggestedSpeaker,
+                };
+              });
+              liveSegmentsRef.current = [...liveSegmentsRef.current, ...segments];
+              setLiveTranscribedCount(liveSegmentsRef.current.length);
+              patchCase(caseId, (file) => withAudit({
+                ...file,
+                segments: [...file.segments, ...segments],
+                autoProcessingNote: "رونویسی زنده در حال انجام است؛ نقش گوینده هنوز قطعی نیست.",
+              }, "asr_live_chunk", `${segments.length} segments`), false);
+            } catch (reason) {
+              const message = reason instanceof Error ? reason.message : "رونویسی یک قطعه ناموفق بود.";
+              patchCase(caseId, (file) => ({
+                ...file,
+                autoProcessingNote: `یک قطعه صوتی در پردازش زنده ناموفق بود؛ پایان ضبط نتیجه‌های موجود را جمع‌بندی می‌کند. ${message}`,
+              }), false);
+            }
+          };
+          transcriptionQueueRef.current = transcriptionQueueRef.current.then(transcribeOne, transcribeOne);
+        }
+        liveStopResolveRef.current?.();
+        liveStopResolveRef.current = null;
+        if (isLiveCaptureActiveRef.current) startLiveChunk(stream, caseId, apiKey);
+      };
+      recorder.start();
+      liveChunkTimerRef.current = window.setTimeout(() => {
+        if (recorder.state !== "inactive") recorder.stop();
+      }, 20_000);
+    } catch {
+      isLiveCaptureActiveRef.current = false;
+      setError("رونویسی زنده روی این دستگاه شروع نشد؛ ضبط محلی ادامه دارد و پس از پایان یک‌بار تلاش برای تبدیل کامل صوت انجام می‌شود.");
+    }
+  }
   const liveMappedQuestions = Object.entries(liveProgress).filter(([, item]) => item.seen);
 
   async function start() {
@@ -527,6 +606,12 @@ function RecordScreen() {
       recRef.current = recorder;
       setSeconds(0);
       setPhase("rec");
+      liveSegmentsRef.current = [];
+      transcriptionQueueRef.current = Promise.resolve();
+      setLiveTranscribedCount(0);
+      const sessionKey = getSessionAiApiKey();
+      isLiveCaptureActiveRef.current = Boolean(active.cloudAsrConsent && active.cloudAiConsent && sessionKey);
+      if (isLiveCaptureActiveRef.current) startLiveChunk(stream, active.id, sessionKey);
       patchActive(
         (file) => withAudit({ ...file, status: file.status === "draft" ? "recording" : file.status, autoProcessingNote: undefined }, "recording_start", "touch"),
         false,
@@ -571,14 +656,23 @@ function RecordScreen() {
     const caseId = active.id;
     const elapsed = secondsRef.current;
     setProcessing(true);
-    setProcessingMessage("در حال ذخیره امن صوت در همین دستگاه…");
+    setProcessingMessage("در حال ذخیره صوت و تکمیل رونویسی زنده…");
     setError("");
+    isLiveCaptureActiveRef.current = false;
+    if (liveChunkTimerRef.current !== null) window.clearTimeout(liveChunkTimerRef.current);
+    liveChunkTimerRef.current = null;
+    const lastLiveStop = liveStopPromiseRef.current;
+    if (liveChunkRef.current && liveChunkRef.current.state !== "inactive") {
+      try { liveChunkRef.current.stop(); } catch { /* recorder already stopped */ }
+    }
     recorder.onstop = () => {
       const blob = new Blob(chunks.current, { type: recorder.mimeType || "audio/webm" });
       streamRef.current?.getTracks().forEach((track) => track.stop());
       void (async () => {
         try {
           await saveAudio(caseId, blob);
+          if (lastLiveStop) await lastLiveStop;
+          await transcriptionQueueRef.current;
           const cloudApproved = active.cloudAsrConsent && active.cloudAiConsent;
           const sessionKey = getSessionAiApiKey();
           patchCase(caseId, (file) => withAudit({
@@ -592,38 +686,40 @@ function RecordScreen() {
           }, "recording_end", `${elapsed}s`), false);
 
           if (cloudApproved && sessionKey) {
-            setProcessingMessage("در حال تبدیل صوت فارسی به متن…");
-            const chunksFromModel = await transcribeAudioWithGroq({ apiKey: sessionKey, audio: blob });
-            const newSegments: Segment[] = chunksFromModel.map((chunk) => {
-              const raw: Segment = {
-                id: crypto.randomUUID(),
-                speaker: "overlap",
-                textRaw: chunk.text,
-                startSec: chunk.startSec,
-                endSec: chunk.endSec,
-                confidence: null,
-                origin: "cloud_asr",
-              };
-              const review = reviewSegment(raw);
-              const suggestedRole = review.speakerConfidence >= 0.52 ? review.suggestedSpeaker : "overlap";
-              return {
-                ...raw,
-                speaker: suggestedRole,
-                questionId: review.questionId ?? undefined,
-                speakerConfidence: review.speakerConfidence,
-                speakerSuggested: review.suggestedSpeaker,
-              };
-            });
-            patchCase(caseId, (file) => withAudit({
-              ...file,
-              segments: [...file.segments, ...newSegments],
-              autoProcessingNote: "تبدیل گفتار به متن انجام شد؛ در حال پیشنهاد نقش گوینده و تحلیل متن…",
-            }, "asr_auto_complete", `${newSegments.length} segments`), false);
+            let sessionSegments: Segment[] = [...liveSegmentsRef.current];
+            if (!sessionSegments.length) {
+              setProcessingMessage("در حال تبدیل صوت فارسی به متن…");
+              const chunksFromModel = await transcribeAudioWithGroq({ apiKey: sessionKey, audio: blob });
+              sessionSegments = chunksFromModel.map((piece) => {
+                const raw: Segment = {
+                  id: crypto.randomUUID(),
+                  speaker: "overlap",
+                  textRaw: piece.text,
+                  startSec: piece.startSec,
+                  endSec: piece.endSec,
+                  confidence: null,
+                  origin: "cloud_asr",
+                };
+                const review = reviewSegment(raw);
+                return {
+                  ...raw,
+                  speaker: review.speakerConfidence >= 0.52 ? review.suggestedSpeaker : "overlap",
+                  questionId: review.questionId ?? undefined,
+                  speakerConfidence: review.speakerConfidence,
+                  speakerSuggested: review.suggestedSpeaker,
+                };
+              });
+              patchCase(caseId, (file) => withAudit({
+                ...file,
+                segments: [...file.segments, ...sessionSegments],
+                autoProcessingNote: "تبدیل گفتار به متن پایان ضبط انجام شد؛ در حال بررسی نقش گوینده…",
+              }, "asr_auto_complete", `${sessionSegments.length} segments`), false);
+            }
 
-            setProcessingMessage("در حال تشخیص احتمالی نقش گویندگان…");
-            const speakerSuggestions = await suggestTranscriptSpeakersWithGroq({ apiKey: sessionKey, segments: newSegments });
+            setProcessingMessage("در حال تحلیل نقش گویندگان و سؤال‌ها…");
+            const speakerSuggestions = await suggestTranscriptSpeakersWithGroq({ apiKey: sessionKey, segments: sessionSegments });
             const speakerById = new Map(speakerSuggestions.map((item) => [item.segmentId, item]));
-            const classifiedSegments = newSegments.map((segment) => {
+            const classifiedSegments = sessionSegments.map((segment) => {
               const suggestion = speakerById.get(segment.id);
               const confident = Boolean(suggestion && suggestion.confidence >= 0.65);
               return {
@@ -633,14 +729,18 @@ function RecordScreen() {
                 speakerConfidence: suggestion?.confidence ?? segment.speakerConfidence,
               };
             });
+            const sessionIds = new Set(classifiedSegments.map((segment) => segment.id));
             patchCase(caseId, (file) => withAudit({
               ...file,
-              segments: file.segments.map((segment) => speakerById.has(segment.id)
+              segments: file.segments.map((segment) => sessionIds.has(segment.id)
                 ? classifiedSegments.find((candidate) => candidate.id === segment.id) ?? segment
                 : segment),
               autoProcessingNote: "متن و نقش احتمالی گویندگان ساخته شد؛ همه موارد نیازمند بازبینی انسانی‌اند.",
             }, "speaker_ai_suggestions", `${classifiedSegments.length} segments`), false);
-            const allSegments = [...active.segments, ...classifiedSegments];
+            const allById = new Map<string, Segment>();
+            for (const segment of active.segments) allById.set(segment.id, segment);
+            for (const segment of classifiedSegments) allById.set(segment.id, segment);
+            const allSegments = Array.from(allById.values());
 
             if (classifiedSegments.some((segment) => segment.speaker === "client")) {
               setProcessingMessage("در حال ساخت پیشنهادهای هوش مصنوعی از متن…");
@@ -744,8 +844,14 @@ function RecordScreen() {
           <Square className="size-4" aria-hidden /> پایان ضبط
         </Btn>
       </div>
+      {phase === "rec" && active.cloudAsrConsent && active.cloudAiConsent && hasSessionAiApiKey() ? (
+        <Panel>
+          <h2 className="font-medium">پردازش زنده فعال است</h2>
+          <p className="text-sm text-muted">قطعه‌های گفتار هر ۲۰ ثانیه برای رونویسی ارسال می‌شوند. قطعه‌های پردازش‌شده: {faNum(liveTranscribedCount)}. پس از پایان، نقش گوینده و ارتباط با سؤال‌ها تحلیل می‌شود.</p>
+        </Panel>
+      ) : null}
       {phase !== "idle" ? (
-        <p className="text-sm text-muted">با پایان ضبط، فایل ابتدا روی گوشی ذخیره می‌شود. در صورت ثبت رضایت ابری و آماده بودن کلید Groq، تبدیل گفتار و پیشنهاد تحلیل به‌طور خودکار اجرا می‌شود.</p>
+        <p className="text-sm text-muted">با پایان ضبط، صوت کامل در گوشی ذخیره می‌شود؛ در صورت رضایت ابری و کلید Groq، نتیجه رونویسی قطعه‌ها و پیشنهادهای هوش مصنوعی جمع‌بندی می‌شوند.</p>
       ) : null}
       {phase === "rec" && liveMappedQuestions.length ? <Panel>
         <h2 className="font-medium">موضوع‌های تشخیص‌داده‌شده (فقط پیشنهاد)</h2>
