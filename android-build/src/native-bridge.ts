@@ -43,7 +43,10 @@ export function installNativeBridge(): void {
   HTMLAnchorElement.prototype.click = function patchedClick(this: HTMLAnchorElement) {
     const blob = this.href.startsWith("blob:") ? blobs.get(this.href) : undefined;
     if (this.download && blob) {
-      void saveBlob(blob, this.download).catch((error: unknown) => {\n        const message = error instanceof Error ? error.message : "ذخیره فایل ناموفق بود.";\n        window.alert(message);\n      });
+      void saveBlob(blob, this.download).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : "ذخیره فایل ناموفق بود.";
+        window.alert(message);
+      });
       return;
     }
     originalClick.call(this);
