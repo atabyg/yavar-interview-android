@@ -748,6 +748,11 @@ function TranscriptScreen() {
     <div className="flex flex-col gap-3 py-4">
       <h1 className="text-xl font-medium">متن و گوینده</h1>
       <Banner>سؤال مصاحبه‌کننده پاسخ مددجو نیست. اگر گوینده مطمئن نیست، وضعیت را نامشخص بگذارید و امتیاز ۲ ندهید.</Banner>
+      <Panel>
+        <h2 className="font-medium">تحلیل محلی خودکار</h2>
+        <p className="mt-1 text-sm leading-normal">بدون کلید API و بدون ارسال متن به اینترنت، برای هر قطعهٔ ثبت‌شده پیشنهاد نقش گوینده و سؤال احتمالی محاسبه می‌شود. این روش قاعده‌محور است، نه مدل زبانی یا تشخیص قطعی گوینده؛ پیشنهادها را در فهرست پایین بررسی و در صورت نیاز با دکمه‌های نقش اصلاح کنید.</p>
+        <p className="mt-1 text-sm text-muted">قطعه‌های گفتگو: {faNum(active.segments.length)} · موارد نیازمند بازبینی: {faNum(active.segments.filter((segment) => reviewSegment(segment).needsHumanReview).length)}</p>
+      </Panel>
       <Panel><h2 className="font-medium">بازبینی اولیه گفتگو</h2><p className="mt-1 text-sm">موارد نیازمند بررسی: {faNum(finalIssues.filter((issue) => issue.severity !== "info").length)} · نقص‌ها به‌صورت خودکار تکمیل نمی‌شوند.</p><ul className="mt-2 flex flex-col gap-1">{finalIssues.slice(0, 8).map((issue, index) => <li key={issue.code + index} className={issue.severity === "error" ? "text-danger" : issue.severity === "warning" ? "text-danger" : "text-muted"}>{issue.message}</li>)}</ul><Btn className="mt-2" tone="primary" onClick={() => go("report")}>بازبینی نهایی و تولید گزارش</Btn></Panel>
       {audioUrl ? <audio controls src={audioUrl} className="w-full" /> : <p className="text-sm text-muted">فایل صوتی ذخیره نشده. می‌توانید متن را دستی وارد کنید.</p>}
       <Panel>
@@ -791,6 +796,11 @@ function TranscriptScreen() {
               ))}
             </div>
             <p className="whitespace-pre-wrap text-base leading-normal">{segment.textRaw}</p>
+            <p className="mt-2 text-sm leading-normal text-muted">
+              تحلیل محلی: نقش احتمالی «{speakerLabel(reviewSegment(segment).suggestedSpeaker)}» · اطمینان تقریبی {faNum(Math.round(reviewSegment(segment).speakerConfidence * 100))}٪
+              {reviewSegment(segment).questionId ? ` · سؤال احتمالی: ${questionLabel(reviewSegment(segment).questionId as string)}` : " · سؤال مشخصی با اطمینان کافی تطبیق نشد"}
+              {reviewSegment(segment).needsHumanReview ? " · بازبینی انسانی لازم است" : ""}
+            </p>
             <p className="mt-1 text-sm text-muted">
               {segment.speakerSuggested ? `پیشنهاد نقش: ${speakerLabel(segment.speakerSuggested)} (${faNum(Math.round((segment.speakerConfidence ?? 0) * 100))}٪) · نیازمند تأیید` : "نقش گوینده بر اساس انتخاب کاربر"}
               {" · "}{segment.origin === "manual" ? "ثبت دستی" : "گفتار مرورگر"}
