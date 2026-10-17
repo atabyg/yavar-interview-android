@@ -82,10 +82,10 @@ export default function Record({ folders, onOpen }) {
       await OfflineSpeech.start({ language: "fa-IR" });
       speechStartedRef.current = true;
       setSpeechError("");
-      setSpeechStatus(info.onDevice ? "تشخیص گفتار روی دستگاه (آفلاین)" : "ترجیح آفلاین؛ وابسته به موتور گفتار نصب‌شده روی گوشی");
+      setSpeechStatus(info.onDevice ? "تشخیص گفتار روی دستگاه (آفلاین)" : "موتور تشخیص گفتار اندروید؛ ممکن است برای فارسی به اینترنت نیاز داشته باشد.");
     } catch (e) {
       await removeSpeechListeners();
-      setSpeechError("تشخیص آفلاین فارسی روی این گوشی فعال نشد. صدای ضبط‌شده همچنان ذخیره می‌شود؛ در صورت نیاز، ارائه‌دهندهٔ صوت ابری را در تنظیمات انتخاب کنید.");
+      setSpeechError("موتور تشخیص گفتار گوشی شروع نشد. مجوز میکروفن و سرویس گفتار اندروید/Google را بررسی کنید؛ فایل صوتی ضبط‌شده همچنان ذخیره می‌شود.");
       setSpeechStatus("تشخیص گفتار فعال نیست");
     }
   }
