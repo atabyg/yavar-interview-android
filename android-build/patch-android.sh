@@ -31,12 +31,12 @@ public class MainActivity extends BridgeActivity {
 }
 EOF
 
-# Set explicit V4 package metadata (unique appId is supplied by capacitor.config.json).
+# Set V5 version metadata while preserving V4 applicationId for in-place Android upgrade.
 BUILD=android/app/build.gradle
-sed -E -i 's/versionCode[[:space:]]*=?[[:space:]]*[0-9]+/versionCode 4/' "$BUILD"
-sed -E -i 's/versionName[[:space:]]*=?[[:space:]]*"[^"]+"/versionName "4.0.0"/' "$BUILD"
-grep -q 'applicationId "com.yavarshahrha.interview.v4"' "$BUILD" || { echo "::error::Unexpected V4 applicationId"; exit 1; }
-grep -q 'versionCode 4' "$BUILD" || { echo "::error::Could not set V4 versionCode"; exit 1; }
-grep -q 'versionName "4.0.0"' "$BUILD" || { echo "::error::Could not set V4 versionName"; exit 1; }
-echo "V4 package metadata:"
+sed -E -i 's/versionCode[[:space:]]*=?[[:space:]]*[0-9]+/versionCode 5/' "$BUILD"
+sed -E -i 's/versionName[[:space:]]*=?[[:space:]]*"[^"]+"/versionName "5.0.0"/' "$BUILD"
+grep -q 'applicationId "com.yavarshahrha.interview.v4"' "$BUILD" || { echo "::error::Unexpected applicationId; must remain compatible with V4"; exit 1; }
+grep -q 'versionCode 5' "$BUILD" || { echo "::error::Could not set V5 versionCode"; exit 1; }
+grep -q 'versionName "5.0.0"' "$BUILD" || { echo "::error::Could not set V5 versionName"; exit 1; }
+echo "V5 package metadata:"
 grep -E 'applicationId|versionCode|versionName|minSdkVersion' "$BUILD" android/variables.gradle || true
