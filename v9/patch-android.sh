@@ -327,7 +327,7 @@ cmake_path = text.find('path "src/main/cpp/CMakeLists.txt"')
 android_end = text.find("\n}\n", android_start.end())
 if cmake_path < android_start.end() or cmake_path > android_end:
     raise SystemExit("CMake configuration was not inserted inside the android block")
-if repo_start and repo_start < cmake_path < text.find("\n}\n", repo_start.end()):
+if repo_start and repo_start.start() < cmake_path < text.find("\n}\n", repo_start.end()):
     raise SystemExit("CMake configuration was incorrectly inserted inside repositories")
 
 open(path, "w", encoding="utf-8").write(text)
