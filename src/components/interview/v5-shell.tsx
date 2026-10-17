@@ -45,7 +45,7 @@ export function V5Toolbar() {
   function createCase() {
     const code = newUniqueCode(state.cases.map((file) => file.code));
     const file = createEmptyCase({ center: state.settings.centerDefault, code });
-    addCase(withAudit(file, "case_created", "نسخه ۵: ایجاد پرونده جدید"), "case");
+    addCase(withAudit(file, "case_created", "نسخه ۶: ایجاد پرونده جدید"), "case");
     setNotice("پرونده جدید ساخته شد؛ اطلاعات را تکمیل و دکمه ذخیره را بزنید.");
     setArchiveOpen(false);
   }
@@ -86,7 +86,7 @@ export function V5Toolbar() {
         <div className="flex items-center justify-between gap-2">
           <button className="min-w-0 text-start" onClick={() => go("home")} aria-label="رفتن به میز کار">
             <span className="block text-base font-semibold">یاور</span>
-            <span className="block text-xs text-muted">میز مصاحبه · نسخه ۵</span>
+            <span className="block text-xs text-muted">میز مصاحبه · نسخه ۶</span>
           </button>
           <div className="flex shrink-0 items-center gap-1.5">
             <button title="بازگشت" aria-label="بازگشت" disabled={state.view === "home" || state.view === "lock"} onClick={() => go(previousView[state.view] ?? "home")} className="flex size-11 items-center justify-center rounded-lg border border-line bg-surface disabled:opacity-40">
