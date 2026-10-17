@@ -23,16 +23,7 @@ import type { AiAssistResult, AiProvider, AiQuestionSuggestion } from "@/lib/int
 import { authenticateBiometric, biometricAvailable, isNativeAndroid, savePdfToPublicStorage, sharePdf } from "@/lib/interview/native-exports";
 import { FORM_WORKFLOW } from "@/lib/interview/forms";
 
-function downloadBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-export function LockScreen() {
+remove generic unencrypted download helperexport function LockScreen() {
   const { state, setupPin, unlockWith, unlockWithBiometric } = useInterview();
   const [pin, setPin] = useState("");
   const [again, setAgain] = useState("");
@@ -1105,7 +1096,7 @@ function ApproveButton({ who, label, done }: { who: "expert" | "second"; label: 
 function ReportScreen() {
   const { active, state, patchActive } = useInterview();
   const [hash, setHash] = useState("");
-  const [pinOpen, setPinOpen] = useState<null | "html" | "json" | "transcript" | "save-pdf" | "share-pdf">(null);
+  const [pinOpen, setPinOpen] = useState<null | "save-pdf" | "share-pdf">(null);
   const sheetRef = useRef<HTMLElement>(null);
   const result = active ? evaluate(active) : null;
   useEffect(() => {
@@ -1121,13 +1112,7 @@ function ReportScreen() {
     return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name}</title><style>@page{size:A4;margin:12mm}body{font-family:Tahoma,sans-serif;line-height:1.65;color:#222;direction:rtl;text-align:right;font-size:10pt}h1{font-size:17pt}table{width:100%;border-collapse:collapse;table-layout:fixed;page-break-inside:auto}tr{page-break-inside:avoid;page-break-after:auto}td,th{border:1px solid #999;padding:5px;vertical-align:top;text-align:right;overflow-wrap:anywhere}article{border:0!important;padding:0!important}.text-muted{color:#555}.text-sm{font-size:9pt}.text-xl{font-size:17pt}.mt-3{margin-top:10px}.mt-2{margin-top:6px}.mt-1{margin-top:3px}.grid{display:block}.no-print{display:none!important}</style></head><body>${body}</body></html>`;
   }
 
-  function exportHtml() {
-    const html = buildReportHtml();
-    downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `${name}.html`);
-    patchActive((file) => withAudit(file, "export", "html"), false);
-  }
-
-  async function exportPdfToPublicFolder() {
+remove HTML export function  async function exportPdfToPublicFolder() {
     const html = buildReportHtml();
     if (isNativeAndroid()) {
       await savePdfToPublicStorage(`${name}.pdf`, html);
@@ -1153,10 +1138,9 @@ function ReportScreen() {
           <Printer className="size-4" aria-hidden /> ذخیره PDF در پوشه عمومی
         </Btn>
         <Btn onClick={() => setPinOpen("share-pdf")}>اشتراک PDF با برنامه‌های دیگر</Btn>
-        <Btn onClick={() => setPinOpen("html")}>دانلود HTML</Btn>
-        <Btn onClick={() => setPinOpen("json")}>خروجی داده</Btn>
-        <Btn onClick={() => setPinOpen("transcript")}>متن خام، جداگانه</Btn>
+        {/* Raw/JSON/HTML exports remain disabled until encrypted export is implemented. */}
       </div>
+      <p className="no-print text-xs leading-normal text-muted">خروجی HTML، JSON و transcript خام تا زمان پیاده‌سازی خروجی رمزنگاری‌شده غیرفعال‌اند. گزارش PDF به‌طور پیش‌فرض متن کامل مکالمه را شامل نمی‌شود.</p>
       <article ref={sheetRef} className="report rounded-lg border border-line bg-surface p-3">
         <p className="text-sm">{state.settings.orgTitle}</p>
         <p className="text-sm text-muted">{state.settings.deptTitle}</p>
@@ -1228,19 +1212,8 @@ function ReportScreen() {
           pinRecord={state.pin}
           onClose={() => setPinOpen(null)}
           onSuccess={() => {
-            if (pinOpen === "html") exportHtml();
             if (pinOpen === "save-pdf") void exportPdfToPublicFolder().catch((error: unknown) => window.alert(error instanceof Error ? error.message : "ذخیره PDF ناموفق بود."));
             if (pinOpen === "share-pdf") void sharePdfWithOtherApps().catch((error: unknown) => window.alert(error instanceof Error ? error.message : "اشتراک PDF ناموفق بود."));
-            if (pinOpen === "json") {
-              const copy = { ...active, settingsEndPhrase: undefined };
-              downloadBlob(new Blob([JSON.stringify(copy, null, 2)], { type: "application/json" }), `${name}.json`);
-              patchActive((file) => withAudit(file, "export", "json"), false);
-            }
-            if (pinOpen === "transcript") {
-              const text = active.segments.map((segment) => `${speakerLabel(segment.speaker)}: ${segment.textRaw}`).join("\n\n");
-              downloadBlob(new Blob([text], { type: "text/plain;charset=utf-8" }), `${name}_transcript.txt`);
-              patchActive((file) => withAudit(file, "export", "transcript"), false);
-            }
             setPinOpen(null);
           }}
         />
