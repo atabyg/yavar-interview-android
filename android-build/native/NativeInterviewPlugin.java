@@ -5,8 +5,6 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.CancellationSignal;
-import android.os.Handler;
-import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.print.PageRange;
 import android.print.PrintAttributes;
@@ -102,8 +100,14 @@ public class NativeInterviewPlugin extends Plugin {
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                 intent.setType("application/pdf");
                 intent.putExtra(Intent.EXTRA_TITLE, name);
-                startActivityForResult(call, intent, "savePdfResult");
                 pendingPdfs.put(call.getCallbackId(), pdf);
+                try {
+                    startActivityForResult(call, intent, "savePdfResult");
+                } catch (Exception error) {
+                    pendingPdfs.remove(call.getCallbackId());
+                    pdf.delete();
+                    call.reject("پنجره انتخاب محل ذخیره PDF باز نشد.", error);
+                }
             }
 
             @Override
