@@ -66,8 +66,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       lockUntil: saved.lockUntil,
       settings: saved.settings,
       cases: saved.cases,
-      unlocked: false,
-      view: "lock",
+      unlocked: saved.settings.requirePinOnLaunch === false,
+      view: saved.settings.requirePinOnLaunch === false ? "home" : "lock",
       ready: true,
     }));
   }, []);
