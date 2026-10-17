@@ -44,7 +44,7 @@ export default function Settings({ storage, onChange }) {
 
   async function saveKey() {
     const k = key.trim();
-    if (k.length < 12 || /\\s/.test(k)) { toast("کلید API ناقص یا دارای فاصله است."); return; }
+    if (k.length < 12 || /\s/.test(k)) { toast("کلید API ناقص یا دارای فاصله است."); return; }
     setBusy(true);
     try {
       const models = await testProviderKey(keyProvider, k);
