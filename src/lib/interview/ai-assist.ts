@@ -81,12 +81,15 @@ export async function requestAiSuggestions(args: {
   if (!apiKey) throw new Error("کلید API وارد نشده است.");
   const clientSegments = args.segments.filter((s) => s.speaker === "client");
   if (!clientSegments.length) throw new Error("قطعه‌ای با انتساب مددجو برای تحلیل موجود نیست.");
-  const endpoint = args.provider === "deepseek"
-    ? "https://api.deepseek.com/chat/completions"
-    : args.provider === "groq"
-      ? "https://api.groq.com/openai/v1/chat/completions"
-      : "https://api.openai.com/v1/chat/completions";
-  const model = args.provider === "deepseek" ? "deepseek-chat" : args.provider === "groq" ? "openai/gpt-oss-20b" : "gpt-4o-mini";
+  const providerConfig: Record<AiProvider, { endpoint: string; model: string }> = {
+    groq: { endpoint: "https://api.groq.com/openai/v1/chat/completions", model: "openai/gpt-oss-20b" },
+    deepseek: { endpoint: "https://api.deepseek.com/chat/completions", model: "deepseek-chat" },
+    openai: { endpoint: "https://api.openai.com/v1/chat/completions", model: "gpt-4o-mini" },
+    openrouter: { endpoint: "https://openrouter.ai/api/v1/chat/completions", model: "openrouter/free" },
+    mistral: { endpoint: "https://api.mistral.ai/v1/chat/completions", model: "mistral-small-latest" },
+    cerebras: { endpoint: "https://api.cerebras.ai/v1/chat/completions", model: "gpt-oss-120b" },
+  };
+  const { endpoint, model } = providerConfig[args.provider];
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45_000);
   const onAbort = () => controller.abort();
@@ -115,7 +118,11 @@ export async function requestAiSuggestions(args: {
         ]
       })
     });
-    if (!response.ok) throw new Error(`سرویس هوش مصنوعی پاسخ ${response.status} داد؛ متن گفتگو ذخیره یا ارسال مجدد خودکار نمی‌شود.`);
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) throw new Error("کلید API معتبر نیست یا اجازه استفاده از این مدل را ندارد.");
+      if (response.status === 429) throw new Error("سهمیه یا محدودیت نرخ سرویس فعال شده است؛ کلید/مدل یا زمان دیگری را امتحان کنید.");
+      throw new Error(`سرویس ${args.provider} پاسخ ${response.status} داد؛ متن گفتگو ذخیره یا ارسال مجدد خودکار نمی‌شود.`);
+    }
     const envelope: unknown = await response.json();
     if (!isRecord(envelope) || !Array.isArray(envelope.choices) || !isRecord(envelope.choices[0]) ||
         !isRecord(envelope.choices[0].message) || typeof envelope.choices[0].message.content !== "string") {
