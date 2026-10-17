@@ -50,6 +50,10 @@ jobs:
         run: |
           cp app/android/app/build/outputs/apk/debug/app-debug.apk yavar-interview-v4-debug.apk
           ls -lh yavar-interview-v4-debug.apk
+          unzip -t yavar-interview-v4-debug.apk >/dev/null
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose yavar-interview-v4-debug.apk
+          "$BUILD_TOOLS/aapt" dump badging yavar-interview-v4-debug.apk | grep -F "package: name='com.yavarshahrha.interview.v4' versionCode='4' versionName='4.0.0'"
       - uses: actions/upload-artifact@v4
         with:
           name: yavar-interview-v4-apk
