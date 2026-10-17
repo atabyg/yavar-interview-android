@@ -51,11 +51,11 @@ export async function testProviderKey(provider, key) {
   }
   const data = await r.json();
   let ids = provider === "gemini"
-    ? (data.models || []).filter((m) => (m.supportedGenerationMethods || []).includes("generateContent")).map((m) => String(m.name || "").replace(/^models\\//, ""))
+    ? (data.models || []).filter((m) => (m.supportedGenerationMethods || []).includes("generateContent")).map((m) => String(m.name || "").replace("models/", ""))
     : (data.data || []).map((m) => String(m.id || ""));
   ids = ids.filter(Boolean);
   if (provider === "openai") ids = ids.filter((id) => /^(gpt-|o[1-9])/.test(id));
-  if (provider === "groq") ids = ids.filter((id) => /^(openai\\/gpt-|llama-|mixtral-|qwen-|deepseek-|meta-llama-)/i.test(id));
+  if (provider === "groq") ids = ids.filter((id) => id.startsWith("openai/gpt-") || /^(llama-|mixtral-|qwen-|deepseek-|meta-llama-)/i.test(id));
   if (provider === "mistral") ids = ids.filter((id) => /mistral|ministral|codestral|open-mistral/i.test(id) && !/embed|moderation/i.test(id));
   return [...new Set(ids)].sort();
 }
