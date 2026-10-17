@@ -24,6 +24,7 @@ import type { AiAssistResult, AiProvider, AiQuestionSuggestion } from "@/lib/int
 import { isNativeAndroid, savePdfToPublicStorage, sharePdf } from "@/lib/interview/native-exports";
 import { getMissingCaseFields, questionCompletionFromSegments, reviewSegment, runFinalTranscriptReview, suggestMetadata } from "@/lib/interview/v3-review";
 import { downloadCaseWorkbook } from "@/lib/interview/v3-export";
+import { newUniqueCode } from "@/components/interview/v5-shell";
 
 export function LockScreen() {
   const { state, setupPin, unlockWith } = useInterview();
@@ -229,7 +230,7 @@ function HomeScreen() {
       <div className="flex flex-wrap gap-2">
         <Btn
           tone="primary"
-          onClick={() => addCase(createEmptyCase({ center: state.settings.centerDefault, code: randomSixDigitCode() }))}
+          onClick={() => addCase(createEmptyCase({ center: state.settings.centerDefault, code: newUniqueCode(state.cases.map((file) => file.code)) }))}
         >
           <Plus className="size-4" aria-hidden /> پرونده جدید
         </Btn>
@@ -1478,7 +1479,7 @@ function SettingsScreen() {
           </Btn>
         </div>
         <p className="text-xs text-muted">{aiKeyReady ? `کلید ${settingsProvider} در حافظه موقت حاضر است.` : `کلید ${settingsProvider} ثبت نشده است.`}</p>
-        <p className="text-xs text-muted">کلید فقط در حافظه این اجرا می‌ماند؛ در برنامهٔ کلاینت قابل استخراج است. رونویسی صوت و پیشنهاد نقش گوینده همچنان فقط از Groq استفاده می‌کنند. سایر ارائه‌دهندگان فقط تحلیل متنی را انجام می‌دهند. رایگان‌بودن، سهمیه و دسترسی هر مدل تضمین‌شده نیست.</p>
+        <p className="text-xs text-muted">کلید فقط در حافظه این اجرا می‌ماند؛ در برنامهٔ کلاینت قابل استخراج است. رونویسی صوت و پیشنهاد نقش گوینده فقط از Groq استفاده می‌کنند؛ بقیه ارائه‌دهندگان برای تحلیل متن هستند. راه دریافت کلید: Groq console.groq.com/keys · DeepSeek platform.deepseek.com/api_keys · OpenAI platform.openai.com/api-keys · OpenRouter openrouter.ai/settings/keys · Mistral console.mistral.ai/api-keys · Cerebras cloud.cerebras.ai. مدل‌های رایگان، سهمیه و دسترسی منطقه‌ای ممکن است تغییر کنند و در این برنامه از راه دور تضمین نمی‌شوند.</p>
       </Panel>
       <label className="block text-sm text-muted">قفل خودکار</label>
       <div className="grid grid-cols-4 gap-2">
