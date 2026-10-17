@@ -2,9 +2,9 @@
  * Provider API keys are kept only in JS memory for this app session.
  * They are never written to local storage, case files, exports, or the repository.
  */
-const sessionAiApiKeys: Partial<Record<"deepseek" | "openai" | "groq", string>> = {};
+const sessionAiApiKeys: Partial<Record<"deepseek" | "openai" | "groq" | "openrouter" | "mistral" | "cerebras", string>> = {};
 
-type Provider = "deepseek" | "openai" | "groq";
+type Provider = "deepseek" | "openai" | "groq" | "openrouter" | "mistral" | "cerebras";
 
 export function setSessionAiApiKey(value: string, provider: Provider = "groq"): void {
   const key = value.trim();
