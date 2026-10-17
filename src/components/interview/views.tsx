@@ -938,8 +938,14 @@ function QuestionsScreen() {
         {question.critical && answer.expertScore === 0 ? (
           <CheckRow
             checked={answer.zeroResolved}
-            onChange={(zeroResolved) => write({ ...answer, zeroResolved })}
-            label="صفر این سؤال حیاتی، طبق بازبینی، حل شده است."
+            onChange={(zeroResolved) => {
+              if (zeroResolved && !answer.note.trim()) {
+                window.alert("برای ثبت صفر به‌عنوان حل‌شده، اقدام مشخص و نتیجه بازبینی را ابتدا در یادداشت کارشناس ثبت کنید.");
+                return;
+              }
+              write({ ...answer, zeroResolved });
+            }}
+            label="صفر فقط پس از ثبت اقدام بعدی/نتیجه بازبینی در یادداشت، حل‌شده محسوب می‌شود."
           />
         ) : null}
         <Area label="یادداشت کارشناس" value={answer.note} onChange={(event) => write({ ...answer, note: event.target.value })} />
