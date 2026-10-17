@@ -94,7 +94,8 @@ export default function Record({ folders, onOpen }) {
     if (!speechStartedRef.current) return;
     try { await OfflineSpeech.stop(); } catch (e) {}
     // Let a final-result event arrive before releasing listeners and persisting the transcript.
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    // Android can deliver the final recognition result after stopListening; wait long enough before removing listeners.
+    await new Promise((resolve) => setTimeout(resolve, 1900));
     await removeSpeechListeners();
     speechStartedRef.current = false;
     partialRef.current = "";
