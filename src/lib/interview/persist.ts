@@ -89,7 +89,7 @@ export function loadSaved(): SavedState {
       pin: parsed.pin ?? null,
       failedAttempts: parsed.failedAttempts ?? 0,
       lockUntil: parsed.lockUntil ?? 0,
-      settings: { ...DEFAULT_SETTINGS, ...parsed.settings, endPhrase: parsed.settings?.endPhrase ?? "" },
+      settings: { ...DEFAULT_SETTINGS, ...parsed.settings, endPhrase: parsed.settings?.endPhrase ?? "", allowBrowserSpeech: false },
       cases: parsed.cases,
     };
   } catch {
@@ -100,6 +100,7 @@ export function loadSaved(): SavedState {
 export function saveSaved(state: SavedState): void {
   const copy: SavedState = {
     ...state,
+    settings: { ...state.settings, allowBrowserSpeech: false },
     cases: state.cases.map((file) => ({
       ...file,
       audit: file.audit.map((event) => ({ at: event.at, action: event.action, detail: event.detail })),
