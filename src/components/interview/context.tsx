@@ -186,7 +186,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     async removeActive() {
       const id = stateRef.current.activeId;
       if (!id) return;
-      await deleteAudio(id).catch(() => undefined);
+      await deleteAudio(id);
       setState((current) => ({
         ...current,
         cases: current.cases.filter((file) => file.id !== id),
@@ -196,7 +196,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     },
     async wipeAll() {
       const ids = stateRef.current.cases.map((file) => file.id);
-      await Promise.all(ids.map((id) => deleteAudio(id).catch(() => undefined)));
+      await Promise.all(ids.map((id) => deleteAudio(id)));
       setState((current) => ({ ...current, cases: [], activeId: null, view: "home" }));
     },
   };
