@@ -1,0 +1,8 @@
+{
+  "appId": "com.yavarshahrha.interview",
+  "appName": "مصاحبه یاورشهرها",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
