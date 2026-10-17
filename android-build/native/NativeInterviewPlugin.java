@@ -4,27 +4,23 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.CancellationSignal;
-import android.os.ParcelFileDescriptor;
-import android.print.PageRange;
-import android.print.PrintAttributes;
-import android.print.PrintDocumentAdapter;
-import android.print.PrintDocumentInfo;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.graphics.pdf.PdfDocument;
+import android.view.View;
 
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
-import com.getcapacitor.ActivityResult;
+import androidx.activity.result.ActivityResult;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import com.getcapacitor.annotation.PluginMethod;
+import com.getcapacitor.PluginMethod;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -192,6 +188,8 @@ public class NativeInterviewPlugin extends Plugin {
             return;
         }
         activity.runOnUiThread(() -> {
+            WebView web = null;
+            File target = null;
             try {
                 File outputDir = new File(getContext().getCacheDir(), "pdf_exports");
                 if (!outputDir.exists() && !outputDir.mkdirs()) {
@@ -203,9 +201,9 @@ public class NativeInterviewPlugin extends Plugin {
                 if (oldFiles != null) {
                     for (File old : oldFiles) if (old.isFile() && old.lastModified() < oldest) old.delete();
                 }
-                String stem = fileName.endsWith(".pdf") ? fileName.substring(0, fileName.length() - 4) : fileName;
-                File target = File.createTempFile("yavar-", ".pdf", outputDir);
-                WebView web = new WebView(getContext());
+                target = File.createTempFile("yavar-", ".pdf", outputDir);
+                final File pdfTarget = target;
+                web = new WebView(getContext());
                 web.getSettings().setJavaScriptEnabled(false);
                 web.setBackgroundColor(android.graphics.Color.WHITE);
                 web.setWebViewClient(new WebViewClient() {
@@ -215,80 +213,73 @@ public class NativeInterviewPlugin extends Plugin {
                     public void onPageFinished(WebView view, String url) {
                         if (started) return;
                         started = true;
-                        PrintDocumentAdapter adapter = view.createPrintDocumentAdapter(stem);
-                        PrintAttributes attributes = new PrintAttributes.Builder()
-                            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
-                            .setResolution(new PrintAttributes.Resolution("yavar", "Yavar PDF", 300, 300))
-                            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
-                            .build();
-                        CancellationSignal cancellation = new CancellationSignal();
-                        adapter.onLayout(null, attributes, cancellation, new PrintDocumentAdapter.LayoutResultCallback() {
-                            @Override
-                            public void onLayoutFinished(PrintDocumentInfo info, boolean changed) {
-                                try {
-                                    ParcelFileDescriptor descriptor = ParcelFileDescriptor.open(
-                                        target,
-                                        ParcelFileDescriptor.MODE_READ_WRITE |
-                                            ParcelFileDescriptor.MODE_CREATE |
-                                            ParcelFileDescriptor.MODE_TRUNCATE);
-                                    adapter.onWrite(new PageRange[] { PageRange.ALL_PAGES }, descriptor,
-                                        new CancellationSignal(), new PrintDocumentAdapter.WriteResultCallback() {
-                                            private void cleanup() {
-                                                try { descriptor.close(); } catch (Exception ignored) {}
-                                                view.destroy();
-                                            }
-
-                                            @Override
-                                            public void onWriteFinished(PageRange[] pages) {
-                                                cleanup();
-                                                if (target.length() <= 0) {
-                                                    target.delete();
-                                                    ready.onError("PDF ساخته‌شده خالی است؛ خروجی صادر نشد.");
-                                                } else {
-                                                    ready.onReady(target);
-                                                }
-                                            }
-
-                                            @Override
-                                            public void onWriteFailed(CharSequence error) {
-                                                cleanup();
-                                                target.delete();
-                                                ready.onError("تبدیل گزارش به PDF ناموفق بود: " + String.valueOf(error));
-                                            }
-
-                                            @Override
-                                            public void onWriteCancelled() {
-                                                cleanup();
-                                                target.delete();
-                                                ready.onError("تولید PDF لغو شد.");
-                                            }
-                                        });
-                                } catch (Exception error) {
-                                    view.destroy();
-                                    target.delete();
-                                    ready.onError("ساخت PDF ناموفق بود: " + error.getMessage());
-                                }
+                        PdfDocument document = null;
+                        try {
+                            final int pageWidth = 595;
+                            final int pageHeight = 842;
+                            final int margin = 24;
+                            final int printableWidth = pageWidth - margin * 2;
+                            final int printableHeight = pageHeight - margin * 2;
+                            final int contentWidth = 794;
+                            view.measure(
+                                View.MeasureSpec.makeMeasureSpec(contentWidth, View.MeasureSpec.EXACTLY),
+                                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+                            int contentHeight = Math.max(view.getMeasuredHeight(),
+                                (int) Math.ceil(view.getContentHeight() * view.getScale()));
+                            if (contentHeight <= 0) throw new IllegalStateException("گزارش محتوایی برای چاپ ندارد.");
+                            view.layout(0, 0, contentWidth, contentHeight);
+                            float scale = (float) printableWidth / (float) contentWidth;
+                            int sourcePageHeight = Math.max(1, (int) (printableHeight / scale));
+                            int pageCount = Math.max(1, (int) Math.ceil((double) contentHeight / sourcePageHeight));
+                            document = new PdfDocument();
+                            for (int pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+                                PdfDocument.PageInfo pageInfo = new PdfDocument.PageInfo.Builder(
+                                    pageWidth, pageHeight, pageIndex + 1).create();
+                                PdfDocument.Page page = document.startPage(pageInfo);
+                                android.graphics.Canvas canvas = page.getCanvas();
+                                canvas.save();
+                                canvas.translate(margin, margin);
+                                canvas.clipRect(0, 0, printableWidth, printableHeight);
+                                canvas.scale(scale, scale);
+                                canvas.translate(0, -pageIndex * sourcePageHeight);
+                                view.draw(canvas);
+                                canvas.restore();
+                                document.finishPage(page);
                             }
-
-                            @Override
-                            public void onLayoutFailed(CharSequence error) {
-                                view.destroy();
-                                target.delete();
-                                ready.onError("صفحه‌آرایی گزارش برای PDF ناموفق بود: " + String.valueOf(error));
+                            try (FileOutputStream output = new FileOutputStream(pdfTarget)) {
+                                document.writeTo(output);
+                                output.flush();
                             }
-                        }, new Bundle());
+                            document.close();
+                            document = null;
+                            view.destroy();
+                            if (pdfTarget.length() <= 0) {
+                                pdfTarget.delete();
+                                ready.onError("PDF ساخته‌شده خالی است؛ خروجی صادر نشد.");
+                            } else {
+                                ready.onReady(pdfTarget);
+                            }
+                        } catch (Exception error) {
+                            if (document != null) document.close();
+                            view.destroy();
+                            pdfTarget.delete();
+                            ready.onError("ساخت PDF ناموفق بود: " + error.getMessage());
+                        }
                     }
                 });
                 String wrapped = "<!doctype html><html lang=\"fa\" dir=\"rtl\"><head><meta charset=\"utf-8\"/>" +
                     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/>" +
-                    "<style>@page{size:A4;margin:12mm}body{font-family:sans-serif;direction:rtl;text-align:right;line-height:1.65;" +
-                    "overflow-wrap:anywhere}table{width:100%;border-collapse:collapse;table-layout:fixed}td,th{border:1px solid #999;" +
-                    "padding:5px;vertical-align:top;text-align:right;overflow-wrap:anywhere}tr{page-break-inside:avoid}" +
+                    "<style>body{font-family:sans-serif;direction:rtl;text-align:right;line-height:1.65;" +
+                    "overflow-wrap:anywhere;margin:0;padding:0}table{width:100%;border-collapse:collapse;table-layout:fixed}" +
+                    "td,th{border:1px solid #999;padding:5px;vertical-align:top;text-align:right;overflow-wrap:anywhere}" +
                     "h1{font-size:17pt}p,li,td,th{font-size:10pt}</style></head><body>" + sourceHtml + "</body></html>";
                 web.loadDataWithBaseURL(null, wrapped, "text/html", "UTF-8", null);
             } catch (Exception error) {
+                if (web != null) web.destroy();
+                if (target != null) target.delete();
                 ready.onError("ساخت PDF ناموفق بود: " + error.getMessage());
             }
         });
     }
+}
 }
