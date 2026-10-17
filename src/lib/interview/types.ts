@@ -103,6 +103,8 @@ export interface CaseFile {
   secondApprovedAt: string | null;
   cloudAsrConsent: boolean;
   cloudAiConsent: boolean;
+  /** Last automatic transcription/AI outcome; never replaces official scoring. */
+  autoProcessingNote?: string;
   audit: AuditEvent[];
 }
 
