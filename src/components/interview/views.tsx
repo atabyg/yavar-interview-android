@@ -15,10 +15,11 @@ import {
   statusLabel,
 } from "@/lib/interview/format";
 import { loadAudio, saveAudio, verifyPin } from "@/lib/interview/persist";
+import { clearSessionAiApiKey, getSessionAiApiKey, hasSessionAiApiKey, setSessionAiApiKey } from "@/lib/interview/ai-runtime";
 import { QUESTIONS, RULES_META, questionById, scopeIds } from "@/lib/interview/rules";
 import { SUGGESTION_LABEL, canonicalBody, closeBlockers, evaluate, scoreAllowed } from "@/lib/interview/scoring";
 import type { Answer, AnswerStatus, CaseFile, Segment, Speaker } from "@/lib/interview/types";
-import { applyAiSuggestionToCase, requestAiSuggestions } from "@/lib/interview/ai-assist";
+import { applyAiSuggestionToCase, requestAiSuggestions, transcribeAudioWithGroq } from "@/lib/interview/ai-assist";
 import type { AiAssistResult, AiProvider, AiQuestionSuggestion } from "@/lib/interview/ai-assist";
 import { authenticateBiometric, biometricAvailable, isNativeAndroid, savePdfToPublicStorage, sharePdf } from "@/lib/interview/native-exports";
 import { FORM_WORKFLOW } from "@/lib/interview/forms";
@@ -418,7 +419,7 @@ function CaseScreen() {
 }
 
 function ReadyScreen() {
-  const { active, go } = useInterview();
+  const { active, go, patchActive } = useInterview();
   const [storage, setStorage] = useState("در حال بررسی فضای ذخیره…");
   useEffect(() => {
     const estimate = navigator.storage?.estimate?.();
@@ -443,6 +444,22 @@ function ReadyScreen() {
           <li>گوشی را نزدیک، ثابت و دور از تلویزیون بگذارید. میکروفون یقه‌ای یا هدست اگر هست بهتر از میکروفون خود گوشی در اتاق شلوغ است.</li>
           <li>حذف نویز مرورگر تضمین کیفیت نیست. اگر صدا نامفهوم بود، امتیاز خودکار ندهید و مصاحبه را دستی یا دوباره انجام دهید.</li>
         </ul>
+      </Panel>
+      <Panel>
+        <h2 className="font-medium">پردازش خودکار پس از ضبط</h2>
+        <CheckRow
+          checked={active.cloudAsrConsent && active.cloudAiConsent}
+          onChange={(enabled) => patchActive((file) => withAudit({
+            ...file, cloudAsrConsent: enabled, cloudAiConsent: enabled,
+            autoProcessingNote: enabled ? file.autoProcessingNote : "پردازش ابری برای این پرونده غیرفعال شد؛ فایل صوتی در دستگاه می‌ماند."
+          }, "auto_ai_consent", enabled ? "granted" : "revoked"), false)}
+          label="رضایت می‌دهم صدای مصاحبه برای تبدیل گفتار به متن و متن حاصل برای ساخت پیشنهادهای هوش مصنوعی به Groq ارسال شود. هیچ امتیاز رسمی یا تصمیم نهایی خودکار ثبت نمی‌شود."
+        />
+        <p className="text-sm leading-normal text-muted">
+          {hasSessionAiApiKey()
+            ? "کلید API در حافظه همین اجرای برنامه موجود است؛ با رضایت بالا، تبدیل گفتار و پیشنهاد تحلیل پس از پایان ضبط خودکار اجرا می‌شود."
+            : "برای پردازش خودکار، یک‌بار کلید API در تنظیمات وارد کنید. بدون کلید، ضبط فقط روی دستگاه ذخیره می‌شود. اتصال از ایران و سهمیه حساب تضمین‌شده نیست."}
+        </p>
       </Panel>
       <Btn tone="primary" disabled={!canRecord} onClick={() => go("record")}>
         شروع ضبط
@@ -833,7 +850,7 @@ function TranscriptScreen() {
 function QuestionsScreen() {
   const { active, patchActive } = useInterview();
   const [openId, setOpenId] = useState("H01");
-  const [aiProvider, setAiProvider] = useState<AiProvider>("deepseek");
+  const [aiProvider, setAiProvider] = useState<AiProvider>("groq");
   const [aiKey, setAiKey] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState("");
@@ -917,7 +934,8 @@ function QuestionsScreen() {
           <CheckRow checked={active.cloudAiConsent} onChange={(cloudAiConsent) => patchActive((file) => withAudit({ ...file, cloudAiConsent }, "ai_cloud_consent", cloudAiConsent ? "granted" : "revoked"), false)} label="پس از توضیح پیام بالا، برای ارسال متن قطعه‌های منتسب به مددجو به سرویس ابری رضایت می‌دهم." />
           <label className="block text-sm text-muted">ارائه‌دهنده</label>
           <select className="min-h-12 w-full rounded-sm border border-line bg-surface px-3" value={aiProvider} onChange={(event) => setAiProvider(event.target.value as AiProvider)}>
-            <option value="deepseek">DeepSeek API · deepseek-chat</option>
+            <option value="groq">Groq API · Whisper + GPT OSS</option>
+            <option value="deepseek">DeepSeek API · deepseek-flash</option>
             <option value="openai">OpenAI API</option>
           </select>
           <Field label="کلید API (فقط برای همین درخواست؛ ذخیره نمی‌شود)" type="password" value={aiKey} onChange={setAiKey} />
@@ -925,6 +943,7 @@ function QuestionsScreen() {
             setAiError("");
             if (!active.cloudAiConsent) { setAiError("ابتدا رضایت مستقل تحلیل ابری را ثبت کنید."); return; }
             setAiBusy(true);
+            if (aiProvider === "groq") setSessionAiApiKey(aiKey);
             void requestAiSuggestions({ provider: aiProvider, apiKey: aiKey, consentGranted: active.cloudAiConsent, segments: active.segments })
               .then((result) => setAiResult(result))
               .catch((error: unknown) => setAiError(error instanceof Error ? error.message : "تحلیل انجام نشد."))
@@ -932,7 +951,7 @@ function QuestionsScreen() {
           }}>{aiBusy ? "در حال دریافت پیشنهاد…" : "پیشنهاد ارتباط گفتگو با ۲۴ سؤال"}</Btn>
           {aiError ? <Banner tone="warn">{aiError}</Banner> : null}
           {aiResult ? <p className="text-sm">پیشنهادهای دریافتی: {faNum(aiResult.suggestions.length)} · مدل اعلام‌شده: {aiResult.model}. هیچ امتیاز یا تصمیمی خودکار تغییر نکرده است.</p> : null}
-          <p className="text-xs leading-normal text-muted">کلید API در حافظه همین نشست استفاده و پس از پاسخ پاک می‌شود؛ سرویس API ممکن است هزینه توکنی داشته باشد و رایگان‌بودن تضمین نشده است. حساب ChatGPT به‌تنهایی کلید OpenAI API نمی‌دهد. سیاست نگهداری داده را بررسی کنید و تا تأیید سازمان از داده واقعی استفاده نکنید.</p>
+          <p className="text-xs leading-normal text-muted">کلید واردشده برای Groq فقط تا بسته‌شدن برنامه در حافظه می‌ماند و در پرونده ذخیره نمی‌شود. محدودیت رایگان، هزینه، سیاست نگهداری داده و دسترسی شبکه را در حساب سرویس بررسی کنید؛ دسترسی از ایران تضمین‌شده نیست.</p>
         </Panel>
         {aiSuggestion ? <Panel>
           <h2 className="font-medium">پیشنهاد AI برای {questionLabel(question.id)} · نیازمند تأیید کارشناس</h2>
@@ -1288,12 +1307,29 @@ function SettingsScreen() {
   const { state, patchSettings, wipeAll, removeActive, active } = useInterview();
   const [pinOpen, setPinOpen] = useState<null | "wipe" | "delete" | "phrase">(null);
   const [phrase, setPhrase] = useState(state.settings.endPhrase);
+  const [aiKeyDraft, setAiKeyDraft] = useState(getSessionAiApiKey());
+  const [aiKeyReady, setAiKeyReady] = useState(hasSessionAiApiKey());
   return (
     <div className="no-print flex flex-col gap-3 py-4">
       <h1 className="text-xl font-medium">تنظیمات</h1>
       <Field label="عنوان سازمان در سربرگ" value={state.settings.orgTitle} onChange={(orgTitle) => patchSettings({ orgTitle })} />
       <Field label="عنوان واحد" value={state.settings.deptTitle} onChange={(deptTitle) => patchSettings({ deptTitle })} />
       <Field label="مرکز پیش‌فرض" value={state.settings.centerDefault} onChange={(centerDefault) => patchSettings({ centerDefault })} />
+      <Panel>
+        <h2 className="font-medium">کلید API برای پردازش خودکار</h2>
+        <p className="mt-1 text-sm leading-normal text-muted">از کنسول Groq کلید API بگیرید. کلید فقط در حافظه تا بستن یا راه‌اندازی دوباره برنامه نگه داشته می‌شود؛ در پرونده، حافظه دائمی یا مخزن ذخیره نمی‌شود. برای تبدیل صوت از Whisper و برای پیشنهاد متن از مدل زبانی Groq استفاده می‌شود.</p>
+        <Field label="کلید API Groq" value={aiKeyDraft} onChange={setAiKeyDraft} type="password" />
+        <div className="grid grid-cols-2 gap-2">
+          <Btn tone="primary" onClick={() => { setSessionAiApiKey(aiKeyDraft); setAiKeyReady(hasSessionAiApiKey()); setAiKeyDraft(""); }}>
+            ذخیره تا پایان این اجرا
+          </Btn>
+          <Btn disabled={!aiKeyReady} onClick={() => { clearSessionAiApiKey(); setAiKeyDraft(""); setAiKeyReady(false); }}>
+            حذف کلید
+          </Btn>
+        </div>
+        <p className="text-xs text-muted">{aiKeyReady ? "کلید در حافظه موقت حاضر است." : "کلیدی برای پردازش خودکار ثبت نشده است."}</p>
+        <p className="text-xs text-muted">برای دریافت کلید: https://console.groq.com/keys</p>
+      </Panel>
       <label className="block text-sm text-muted">قفل خودکار</label>
       <div className="grid grid-cols-4 gap-2">
         {[1, 5, 15, 0].map((minutes) => (
