@@ -1,21 +1,25 @@
 /**
- * API secrets intentionally live only in JS memory for this app session.
- * Never persist provider keys into localStorage, case files, exports, or the repository.
+ * Provider API keys are kept only in JS memory for this app session.
+ * They are never written to local storage, case files, exports, or the repository.
  */
-let sessionAiApiKey = "";
+const sessionAiApiKeys: Partial<Record<"deepseek" | "openai" | "groq", string>> = {};
 
-export function setSessionAiApiKey(value: string): void {
-  sessionAiApiKey = value.trim();
+type Provider = "deepseek" | "openai" | "groq";
+
+export function setSessionAiApiKey(value: string, provider: Provider = "groq"): void {
+  const key = value.trim();
+  if (key) sessionAiApiKeys[provider] = key;
+  else delete sessionAiApiKeys[provider];
 }
 
-export function getSessionAiApiKey(): string {
-  return sessionAiApiKey;
+export function getSessionAiApiKey(provider: Provider = "groq"): string {
+  return sessionAiApiKeys[provider] ?? "";
 }
 
-export function hasSessionAiApiKey(): boolean {
-  return sessionAiApiKey.length > 0;
+export function hasSessionAiApiKey(provider: Provider = "groq"): boolean {
+  return Boolean(sessionAiApiKeys[provider]?.length);
 }
 
-export function clearSessionAiApiKey(): void {
-  sessionAiApiKey = "";
+export function clearSessionAiApiKey(provider: Provider = "groq"): void {
+  delete sessionAiApiKeys[provider];
 }
