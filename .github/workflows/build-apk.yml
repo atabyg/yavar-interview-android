@@ -1,10 +1,11 @@
-name: Build Android APK (V2 branch)
-run-name: Build V2 debug APK
+name: Build Android APK (V3 branch)
+run-name: Build V3 debug APK
 
 on:
   push:
     branches:
       - feature/offline-ai-interview-v2
+      - feature/interview-v3-live-review
   workflow_dispatch:
 
 permissions:
@@ -53,10 +54,10 @@ jobs:
           ./gradlew assembleDebug --no-daemon --stacktrace
       - name: Collect APK
         run: |
-          cp app/android/app/build/outputs/apk/debug/app-debug.apk yavar-interview-v2-debug.apk
-          ls -l yavar-interview-v2-debug.apk
+          cp app/android/app/build/outputs/apk/debug/app-debug.apk yavar-interview-v3-debug.apk
+          ls -l yavar-interview-v3-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: yavar-interview-v2-debug-apk
-          path: yavar-interview-v2-debug.apk
+          name: yavar-interview-v3-debug-apk
+          path: yavar-interview-v3-debug.apk
           if-no-files-found: error
