@@ -280,7 +280,7 @@ cp native/whisper_jni.cpp "$NATIVE_DIR/whisper_jni.cpp"
 cp native/OfflineWhisperPlugin.java "$JAVA_NATIVE_DIR/OfflineWhisperPlugin.java"
 sed -i "s/__PACKAGE__/$PKG/g" "$JAVA_NATIVE_DIR/OfflineWhisperPlugin.java"
 JNI_PKG="$(printf '%s' "$PKG" | tr '.' '/')"
-sed -i "s/__PACKAGE_SLASH__/$JNI_PKG/g" "$NATIVE_DIR/whisper_jni.cpp"
+sed -i "s|__PACKAGE_SLASH__|$JNI_PKG|g" "$NATIVE_DIR/whisper_jni.cpp"
 
 # Enable the native CMake target for the ARM Android devices this app supports.
 python3 - "$GRADLE" <<'PY'
