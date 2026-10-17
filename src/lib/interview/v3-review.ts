@@ -156,13 +156,18 @@ export function getMissingCaseFields(file: Partial<CaseFile>): MissingField[] {
 export function questionCompletionFromSegments(segments: Segment[]): Record<string, { seen: boolean; hasClientEvidence: boolean; needsReview: boolean }> {
   const progress: Record<string, { seen: boolean; hasClientEvidence: boolean; needsReview: boolean }> = {};
   for (const question of QUESTIONS) progress[question.id] = { seen: false, hasClientEvidence: false, needsReview: false };
+  let currentQuestion: string | null = null;
   for (const segment of segments) {
     const review = reviewSegment(segment);
-    if (!review.questionId) continue;
-    const item = progress[review.questionId];
+    const interviewerTurn = segment.speaker === "interviewer" ||
+      (review.suggestedSpeaker === "interviewer" && review.speakerConfidence >= 0.7);
+    if (review.questionId && (interviewerTurn || !currentQuestion)) currentQuestion = review.questionId;
+    const targetId = review.questionId ?? currentQuestion;
+    if (!targetId || !progress[targetId]) continue;
+    const item = progress[targetId];
     item.seen = true;
     if (segment.speaker === "client" || (review.suggestedSpeaker === "client" && review.speakerConfidence >= 0.5)) item.hasClientEvidence = true;
-    if (review.needsHumanReview || segment.speaker === "overlap") item.needsReview = true;
+    if (review.needsHumanReview || segment.speaker === "overlap" || review.speakerConfidence < 0.7) item.needsReview = true;
   }
   return progress;
 }
@@ -177,6 +182,12 @@ export function runFinalTranscriptReview(file: CaseFile): FinalReviewIssue[] {
     const review = reviewSegment(segment);
     if (review.suggestedSpeaker === "overlap" || review.speakerConfidence < 0.7) {
       issues.push({ severity: "warning", code: "speaker_review", message: `گوینده این بخش نیازمند تأیید انسانی است: «${segment.textRaw.slice(0, 90)}»` });
+    }
+    if (segment.confidence !== null && segment.confidence < 0.65) {
+      issues.push({ severity: "warning", code: "low_asr_confidence", message: `اطمینان تشخیص گفتار پایین است؛ صوت با متن تطبیق داده شود: «${segment.textRaw.slice(0, 90)}»` });
+    }
+    if (/(اشتباه گفتم|برعکس|اصلاح می.?کنم|نه منظورم|تناقض|یادم نیست|مطمئن نیستم)/u.test(normalizeFa(segment.textRaw))) {
+      issues.push({ severity: "warning", code: "self_correction_or_uncertainty", message: `در این بخش نشانه خوداصلاحی یا عدم‌اطمینان وجود دارد؛ کارشناس متن و پاسخ مرتبط را دوباره بررسی کند: «${segment.textRaw.slice(0, 90)}»` });
     }
     if (/[\p{L}]{1,2}\s+[\p{L}]{1,2}/u.test(segment.textRaw)) {
       issues.push({ severity: "info", code: "possible_asr_fragment", message: "احتمال خطای تشخیص یا قطعه‌بندی متن وجود دارد؛ متن صوت با transcript تطبیق داده شود." });
