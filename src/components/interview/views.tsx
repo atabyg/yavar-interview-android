@@ -26,7 +26,7 @@ import { getMissingCaseFields, questionCompletionFromSegments, reviewSegment, ru
 import { downloadCaseWorkbook } from "@/lib/interview/v3-export";
 
 export function LockScreen() {
-  const { state, setupPin, unlockWith, unlockWithBiometric } = useInterview();
+  const { state, setupPin, unlockWith } = useInterview();
   const [pin, setPin] = useState("");
   const [again, setAgain] = useState("");
   const [phase, setPhase] = useState<"one" | "two">("one");
