@@ -41,6 +41,12 @@ package __PACKAGE__;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.util.Base64;
+import java.io.OutputStream;
+import com.getcapacitor.ActivityResult;
+import com.getcapacitor.annotation.ActivityCallback;
 import android.print.PrintAttributes;
 import android.print.PrintManager;
 import android.webkit.WebView;
@@ -76,6 +82,53 @@ public class NativeInterviewPlugin extends Plugin {
     @PluginMethod
     public void sharePdf(PluginCall call) {
         openPrintDialog(call, true);
+    }
+
+    @PluginMethod
+    public void saveFile(PluginCall call) {
+        String fileName = call.getString("fileName", "yavar-export.bin");
+        String mimeType = call.getString("mimeType", "application/octet-stream");
+        String data = call.getString("data", "");
+        if (data.isEmpty()) {
+            call.reject("محتوای فایل خالی است.");
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType(mimeType);
+        intent.putExtra(Intent.EXTRA_TITLE, fileName);
+        startActivityForResult(call, intent, "handleSaveFileResult");
+    }
+
+    @ActivityCallback
+    private void handleSaveFileResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null) {
+            call.reject("ذخیره فایل لغو شد؛ فایل اصلی در برنامه باقی مانده است.");
+            return;
+        }
+        Uri uri = result.getData().getData();
+        String data = call.getString("data", "");
+        try {
+            byte[] bytes = Base64.decode(data, Base64.DEFAULT);
+            OutputStream output = getContext().getContentResolver().openOutputStream(uri, "wt");
+            if (output == null) {
+                call.reject("امکان نوشتن در مسیر انتخاب‌شده وجود ندارد.");
+                return;
+            }
+            try {
+                output.write(bytes);
+                output.flush();
+            } finally {
+                output.close();
+            }
+            JSObject resultData = new JSObject();
+            resultData.put("uri", uri.toString());
+            resultData.put("fileName", call.getString("fileName", "yavar-export.bin"));
+            call.resolve(resultData);
+        } catch (Exception error) {
+            call.reject("ذخیره فایل در مسیر انتخاب‌شده ناموفق بود.", error);
+        }
     }
 
     private void openPrintDialog(PluginCall call, boolean shareFlow) {
