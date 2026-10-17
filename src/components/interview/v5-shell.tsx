@@ -12,6 +12,13 @@ const previousView: Partial<Record<View, View>> = {
   settings: "home", method: "home",
 };
 
+function toLocalDateTimeInput(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
 function newUniqueCode(codes: string[]): string {
   const taken = new Set(codes);
   for (let i = 0; i < 30; i += 1) {
@@ -59,11 +66,12 @@ export function V5Toolbar() {
 
   function saveReminder() {
     if (!active) return;
-    if (!reminder) {
+    const selected = reminder || toLocalDateTimeInput(active.reminderAt);
+    if (!selected) {
       setNotice("ابتدا تاریخ و ساعت یادآوری را انتخاب کنید.");
       return;
     }
-    const date = new Date(reminder);
+    const date = new Date(selected);
     if (!Number.isFinite(date.getTime()) || date.getTime() <= Date.now()) {
       setNotice("زمان یادآوری باید در آینده باشد.");
       return;
@@ -109,7 +117,7 @@ export function V5Toolbar() {
           <div className="grid grid-cols-[1fr_auto] items-end gap-2">
             <label className="block min-w-0 text-xs text-muted">
               زمان یادآوری پرونده
-              <input type="datetime-local" value={reminder || (active.reminderAt ? new Date(active.reminderAt).toISOString().slice(0,16) : "")} onChange={(event) => setReminder(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-line bg-surface px-2 text-sm text-ink" />
+              <input type="datetime-local" value={reminder || toLocalDateTimeInput(active.reminderAt)} onChange={(event) => setReminder(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-line bg-surface px-2 text-sm text-ink" />
             </label>
             <Btn className="min-h-10 px-3 text-sm" onClick={saveReminder}><CalendarClock className="size-4" aria-hidden /> ثبت زمان</Btn>
           </div>
