@@ -1536,7 +1536,7 @@ function SettingsScreen() {
 function MethodScreen() {
   return (
     <div className="no-print flex flex-col gap-3 py-4 text-sm leading-normal">
-      <h1 className="text-xl font-medium">راهنمای سریع نسخه ۵</h1>
+      <h1 className="text-xl font-medium">راهنمای سریع نسخه ۶</h1>
       <Panel>
         <h2 className="font-medium">مصاحبه خودکار</h2>
         <ol className="mt-2 list-decimal pe-4">
