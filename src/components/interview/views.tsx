@@ -19,8 +19,8 @@ import { clearSessionAiApiKey, getSessionAiApiKey, hasSessionAiApiKey, setSessio
 import { QUESTIONS, RULES_META, questionById, scopeIds } from "@/lib/interview/rules";
 import { SUGGESTION_LABEL, canonicalBody, closeBlockers, evaluate, scoreAllowed } from "@/lib/interview/scoring";
 import type { Answer, AnswerStatus, CaseFile, Segment, Speaker } from "@/lib/interview/types";
-import { applyAiSuggestionToCase, requestAiSuggestions, suggestTranscriptSpeakersWithGroq, transcribeAudioWithGroq, testDeepSeekConnection } from "@/lib/interview/ai-assist";
-import type { AiAssistResult, AiProvider, AiQuestionSuggestion } from "@/lib/interview/ai-assist";
+import { applyAiSuggestionToCase, requestAiSuggestions, suggestTranscriptSpeakersWithOpenAI, transcribeAudioWithOpenAI, testAiConnection } from "@/lib/interview/ai-assist";
+import type { AiAssistResult, AiQuestionSuggestion } from "@/lib/interview/ai-assist";
 import { isNativeAndroid, savePdfToPublicStorage, sharePdf } from "@/lib/interview/native-exports";
 import { getMissingCaseFields, questionCompletionFromSegments, reviewSegment, runFinalTranscriptReview, suggestMetadata } from "@/lib/interview/v3-review";
 import { downloadCaseWorkbook } from "@/lib/interview/v3-export";
@@ -454,10 +454,10 @@ function ReadyScreen() {
             ...file, cloudAsrConsent: enabled, cloudAiConsent: enabled,
             autoProcessingNote: enabled ? file.autoProcessingNote : "پردازش ابری برای این پرونده غیرفعال شد؛ فایل صوتی در دستگاه می‌ماند."
           }, "auto_ai_consent", enabled ? "granted" : "revoked"), false)}
-          label="رضایت می‌دهم صدای مصاحبه برای تبدیل گفتار به متن و متن حاصل برای ساخت پیشنهادهای هوش مصنوعی به Groq ارسال شود. هیچ امتیاز رسمی یا تصمیم نهایی خودکار ثبت نمی‌شود."
+          label="رضایت می‌دهم صدای مصاحبه و متن حاصل برای تبدیل گفتار و تحلیل هوش مصنوعی به OpenAI ارسال شود. هیچ امتیاز رسمی یا تصمیم نهایی خودکار ثبت نمی‌شود."
         />
         <p className="text-sm leading-normal text-muted">
-          {hasSessionAiApiKey()
+          {hasSessionAiApiKey("openai")
             ? "کلید API در حافظه همین اجرای برنامه موجود است؛ با رضایت بالا، تبدیل گفتار و پیشنهاد تحلیل پس از پایان ضبط خودکار اجرا می‌شود."
             : "برای پردازش خودکار، یک‌بار کلید API در تنظیمات وارد کنید. بدون کلید، ضبط فقط روی دستگاه ذخیره می‌شود. اتصال از ایران و سهمیه حساب تضمین‌شده نیست."}
         </p>
@@ -535,7 +535,7 @@ function RecordScreen() {
         if (blob.size) {
           const transcribeOne = async () => {
             try {
-              const pieces = await transcribeAudioWithGroq({ apiKey, audio: blob });
+              const pieces = await transcribeAudioWithOpenAI({ apiKey, audio: blob });
               const segments: Segment[] = pieces.map((piece) => {
                 const raw: Segment = {
                   id: crypto.randomUUID(),
@@ -611,7 +611,7 @@ function RecordScreen() {
       liveSegmentsRef.current = [];
       transcriptionQueueRef.current = Promise.resolve();
       setLiveTranscribedCount(0);
-      const sessionKey = getSessionAiApiKey();
+      const sessionKey = getSessionAiApiKey("openai");
       isLiveCaptureActiveRef.current = Boolean(active.cloudAsrConsent && active.cloudAiConsent && sessionKey);
       if (isLiveCaptureActiveRef.current) startLiveChunk(stream, active.id, sessionKey);
       patchActive(
@@ -676,7 +676,7 @@ function RecordScreen() {
           if (lastLiveStop) await lastLiveStop;
           await transcriptionQueueRef.current;
           const cloudApproved = active.cloudAsrConsent && active.cloudAiConsent;
-          const sessionKey = getSessionAiApiKey();
+          const sessionKey = getSessionAiApiKey("openai");
           patchCase(caseId, (file) => withAudit({
             ...file,
             audioStored: blob.size > 0,
@@ -684,14 +684,14 @@ function RecordScreen() {
             status: "review",
             autoProcessingNote: cloudApproved && sessionKey
               ? "صوت در دستگاه ذخیره شد؛ پردازش خودکار ابری آغاز می‌شود."
-              : "صوت در دستگاه ذخیره شد. برای تبدیل گفتار و پیشنهاد هوش مصنوعی، کلید Groq را در تنظیمات وارد و رضایت این پرونده را فعال کنید.",
+              : "صوت در دستگاه ذخیره شد. برای تبدیل گفتار و پیشنهاد هوش مصنوعی، کلید OpenAI را در تنظیمات وارد و رضایت این پرونده را فعال کنید.",
           }, "recording_end", `${elapsed}s`), false);
 
           if (cloudApproved && sessionKey) {
             let sessionSegments: Segment[] = [...liveSegmentsRef.current];
             if (!sessionSegments.length) {
               setProcessingMessage("در حال تبدیل صوت فارسی به متن…");
-              const chunksFromModel = await transcribeAudioWithGroq({ apiKey: sessionKey, audio: blob });
+              const chunksFromModel = await transcribeAudioWithOpenAI({ apiKey: sessionKey, audio: blob });
               sessionSegments = chunksFromModel.map((piece) => {
                 const raw: Segment = {
                   id: crypto.randomUUID(),
@@ -719,7 +719,7 @@ function RecordScreen() {
             }
 
             setProcessingMessage("در حال تحلیل نقش گویندگان و سؤال‌ها…");
-            const speakerSuggestions = await suggestTranscriptSpeakersWithGroq({ apiKey: sessionKey, segments: sessionSegments });
+            const speakerSuggestions = await suggestTranscriptSpeakersWithOpenAI({ apiKey: sessionKey, segments: sessionSegments });
             const speakerById = new Map(speakerSuggestions.map((item) => [item.segmentId, item]));
             const classifiedSegments = sessionSegments.map((segment) => {
               const suggestion = speakerById.get(segment.id);
@@ -744,13 +744,11 @@ function RecordScreen() {
             for (const segment of classifiedSegments) allById.set(segment.id, segment);
             const allSegments = Array.from(allById.values());
 
-            const metadataProvider = state.settings.aiProvider ?? "deepseek";
-            const metadataKey = getSessionAiApiKey(metadataProvider);
+            const metadataKey = getSessionAiApiKey("openai");
             if (active.cloudAiConsent && metadataKey) {
               try {
                 setProcessingMessage("در حال تکمیل مشخصات خالی پرونده از متن گفتگو…");
                 const metadata = await suggestCaseMetadataWithAi({
-                  provider: metadataProvider,
                   apiKey: metadataKey,
                   consentGranted: active.cloudAiConsent,
                   segments: allSegments,
@@ -777,11 +775,9 @@ function RecordScreen() {
 
             if (classifiedSegments.some((segment) => segment.speaker === "client")) {
               setProcessingMessage("در حال ساخت پیشنهادهای هوش مصنوعی از متن…");
-              const textProvider = state.settings.aiProvider ?? "deepseek";
-              const textKey = getSessionAiApiKey(textProvider);
+              const textKey = getSessionAiApiKey("openai");
               if (!textKey) throw new Error("برای ارائه‌دهنده انتخاب‌شده، کلید API را در تنظیمات وارد کنید؛ رونویسی صوت ممکن است انجام شده باشد.");
               const result = await requestAiSuggestions({
-                provider: textProvider,
                 apiKey: textKey,
                 consentGranted: active.cloudAiConsent,
                 segments: allSegments,
@@ -880,14 +876,14 @@ function RecordScreen() {
           <Square className="size-4" aria-hidden /> پایان ضبط
         </Btn>
       </div>
-      {phase === "rec" && active.cloudAsrConsent && active.cloudAiConsent && hasSessionAiApiKey() ? (
+      {phase === "rec" && active.cloudAsrConsent && active.cloudAiConsent && hasSessionAiApiKey("openai") ? (
         <Panel>
           <h2 className="font-medium">پردازش زنده فعال است</h2>
           <p className="text-sm text-muted">قطعه‌های گفتار هر ۲۰ ثانیه برای رونویسی ارسال می‌شوند. قطعه‌های پردازش‌شده: {faNum(liveTranscribedCount)}. پس از پایان، نقش گوینده و ارتباط با سؤال‌ها تحلیل می‌شود.</p>
         </Panel>
       ) : null}
       {phase !== "idle" ? (
-        <p className="text-sm text-muted">با پایان ضبط، صوت کامل در گوشی ذخیره می‌شود؛ در صورت رضایت ابری و کلید Groq، نتیجه رونویسی قطعه‌ها و پیشنهادهای هوش مصنوعی جمع‌بندی می‌شوند.</p>
+        <p className="text-sm text-muted">با پایان ضبط، صوت کامل در گوشی ذخیره می‌شود؛ در صورت رضایت ابری و کلید OpenAI، نتیجه رونویسی قطعه‌ها و پیشنهادهای هوش مصنوعی جمع‌بندی می‌شوند.</p>
       ) : null}
       {phase === "rec" && liveMappedQuestions.length ? <Panel>
         <h2 className="font-medium">موضوع‌های تشخیص‌داده‌شده (فقط پیشنهاد)</h2>
@@ -1016,8 +1012,6 @@ function TranscriptScreen() {
 function QuestionsScreen() {
   const { state, active, patchActive } = useInterview();
   const [openId, setOpenId] = useState("H01");
-  const [aiProvider, setAiProvider] = useState<AiProvider>(state.settings.aiProvider ?? "deepseek");
-  const [aiKey, setAiKey] = useState(getSessionAiApiKey(state.settings.aiProvider ?? "deepseek"));
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiResult, setAiResult] = useState<AiAssistResult | null>(null);
@@ -1098,29 +1092,21 @@ function QuestionsScreen() {
           <div className="flex items-center gap-2"><Sparkles className="size-5" aria-hidden /><h2 className="font-medium">کمک هوش مصنوعی (اختیاری و ابری)</h2></div>
           <p className="mt-2 text-sm leading-normal text-muted">فقط متن قطعه‌هایی که گوینده‌شان «مددجو» علامت خورده به سرویس انتخابی ارسال می‌شوند؛ صوت، نام مستعار و شناسه پرونده ارسال نمی‌شوند، اما خود متن ممکن است نام، شماره تماس یا اطلاعات درمانی/قضایی داشته باشد. پیش از درخواست، متن گفتگو را بازبینی و اطلاعات شناسایی‌کننده را دستی حذف/پوشانده کنید. این انتقال داده حساس را از گوشی خارج می‌کند و رضایت مستقل همین پرونده لازم است.</p>
           <CheckRow checked={active.cloudAiConsent} onChange={(cloudAiConsent) => patchActive((file) => withAudit({ ...file, cloudAiConsent }, "ai_cloud_consent", cloudAiConsent ? "granted" : "revoked"), false)} label="پس از توضیح پیام بالا، برای ارسال متن قطعه‌های منتسب به مددجو به سرویس ابری رضایت می‌دهم." />
-          <label className="block text-sm text-muted">ارائه‌دهنده</label>
-          <select className="min-h-12 w-full rounded-sm border border-line bg-surface px-3" value={aiProvider} onChange={(event) => { const provider = event.target.value as AiProvider; setAiProvider(provider); setAiKey(getSessionAiApiKey(provider)); }}>
-            <option value="groq">Groq · رونویسی صوت + متن</option>
-            <option value="deepseek">DeepSeek · متن</option>
-            <option value="openai">OpenAI · متن</option>
-            <option value="openrouter">OpenRouter · مدل‌های متغیر/رایگان</option>
-            <option value="mistral">Mistral · متن</option>
-            <option value="cerebras">Cerebras · متن</option>
-          </select>
-          <Field label="کلید API (فقط در حافظه این اجرا)" type="password" value={aiKey} onChange={setAiKey} />
-          <Btn tone="primary" disabled={!active.cloudAiConsent || !aiKey.trim() || aiBusy || active.segments.every((s) => s.speaker !== "client")} onClick={() => {
+          <p className="text-sm">سرویس فعال: <strong>OpenAI</strong>. سرویس و کلید فقط از صفحه تنظیمات مدیریت می‌شوند.</p>
+          {!getSessionAiApiKey("openai") ? <Banner tone="warn">ابتدا کلید OpenAI را در تنظیمات وارد و ذخیره کنید.</Banner> : null}
+          <Btn tone="primary" disabled={!active.cloudAiConsent || !getSessionAiApiKey("openai") || aiBusy || active.segments.every((s) => s.speaker !== "client")} onClick={() => {
             setAiError("");
             if (!active.cloudAiConsent) { setAiError("ابتدا رضایت مستقل تحلیل ابری را ثبت کنید."); return; }
             setAiBusy(true);
-            setSessionAiApiKey(aiKey, aiProvider);
-            void requestAiSuggestions({ provider: aiProvider, apiKey: aiKey, consentGranted: active.cloudAiConsent, segments: active.segments })
+            const apiKey = getSessionAiApiKey("openai");
+            void requestAiSuggestions({ apiKey, consentGranted: active.cloudAiConsent, segments: active.segments })
               .then((result) => setAiResult(result))
               .catch((error: unknown) => setAiError(error instanceof Error ? error.message : "تحلیل انجام نشد."))
-              .finally(() => { setAiKey(""); setAiBusy(false); });
+              .finally(() => { setAiBusy(false); });
           }}>{aiBusy ? "در حال دریافت پیشنهاد…" : "پیشنهاد ارتباط گفتگو با ۲۴ سؤال"}</Btn>
           {aiError ? <Banner tone="warn">{aiError}</Banner> : null}
           {aiResult ? <p className="text-sm">پیشنهادهای دریافتی: {faNum(aiResult.suggestions.length)} · مدل اعلام‌شده: {aiResult.model}. هیچ امتیاز یا تصمیمی خودکار تغییر نکرده است.</p> : null}
-          <p className="text-xs leading-normal text-muted">کلید انتخاب‌شده فقط تا بسته‌شدن برنامه در حافظه می‌ماند و در پرونده ذخیره نمی‌شود. محدودیت رایگان، هزینه، سیاست نگهداری داده و دسترسی شبکه را در حساب سرویس بررسی کنید؛ دسترسی از ایران تضمین‌شده نیست.</p>
+          <p className="text-xs leading-normal text-muted">کلید در تنظیمات وارد می‌شود و فقط در حافظه اجرای برنامه می‌ماند. محدودیت هزینه، نگهداری داده و دسترسی شبکه را بررسی کنید.</p>
         </Panel>
         {aiSuggestion ? <Panel>
           <h2 className="font-medium">پیشنهاد AI برای {questionLabel(question.id)} · نیازمند تأیید کارشناس</h2>
@@ -1453,9 +1439,8 @@ function SettingsScreen() {
   const { state, patchSettings, wipeAll, removeActive, active, lock } = useInterview();
   const [pinOpen, setPinOpen] = useState<null | "wipe" | "delete" | "phrase">(null);
   const [phrase, setPhrase] = useState(state.settings.endPhrase);
-  const [settingsProvider, setSettingsProvider] = useState<AiProvider>(state.settings.aiProvider ?? "deepseek");
-  const [aiKeyDraft, setAiKeyDraft] = useState(getSessionAiApiKey(state.settings.aiProvider ?? "deepseek"));
-  const [aiKeyReady, setAiKeyReady] = useState(hasSessionAiApiKey(state.settings.aiProvider ?? "deepseek"));
+  const [aiKeyDraft, setAiKeyDraft] = useState(getSessionAiApiKey("openai"));
+  const [aiKeyReady, setAiKeyReady] = useState(hasSessionAiApiKey("openai"));
   const [connectionTestBusy, setConnectionTestBusy] = useState(false);
   const [connectionTestMessage, setConnectionTestMessage] = useState("");
   return (
@@ -1466,36 +1451,25 @@ function SettingsScreen() {
       <Field label="مرکز پیش‌فرض" value={state.settings.centerDefault} onChange={(centerDefault) => patchSettings({ centerDefault })} />
       <CheckRow checked={state.settings.requirePinOnLaunch ?? true} onChange={(requirePinOnLaunch) => { patchSettings({ requirePinOnLaunch }); if (requirePinOnLaunch) lock(); }} label="رمز هنگام شروع برنامه" />
       <Panel>
-        <h2 className="font-medium">هوش مصنوعی</h2>
-        <label className="mb-1 block text-sm">ارائه‌دهنده تحلیل متن</label>
-        <select className="min-h-12 w-full rounded-sm border border-line bg-surface px-3" value={settingsProvider} onChange={(event) => { const provider = event.target.value as AiProvider; setSettingsProvider(provider); patchSettings({ aiProvider: provider }); setAiKeyDraft(getSessionAiApiKey(provider)); setAiKeyReady(hasSessionAiApiKey(provider)); }}>
-          <option value="groq">Groq (رونویسی صوت + متن)</option><option value="deepseek">DeepSeek (متن)</option><option value="openai">OpenAI (متن)</option><option value="openrouter">OpenRouter (مدل‌های متغیر/رایگان)</option><option value="mistral">Mistral (متن)</option><option value="cerebras">Cerebras (متن)</option>
-        </select>
-        <Field label="کلید API (فقط حافظه همین اجرا)" value={aiKeyDraft} onChange={setAiKeyDraft} type="password" />
+        <h2 className="font-medium">هوش مصنوعی یکپارچه</h2>
+        <p className="text-sm leading-normal text-muted">در نسخه ۷، فقط OpenAI استفاده می‌شود: یک کلید برای تبدیل ویس به متن، پیشنهاد نقش گوینده، استخراج مشخصات و تحلیل گفتگو. برای کار به اینترنت و اعتبار API نیاز است.</p>
+        <Field label="کلید API اوپن‌ای‌آی (فقط حافظه همین اجرا)" value={aiKeyDraft} onChange={setAiKeyDraft} type="password" />
         <div className="grid grid-cols-2 gap-2">
-          <Btn tone="primary" onClick={() => { setSessionAiApiKey(aiKeyDraft, settingsProvider); patchSettings({ aiProvider: settingsProvider }); setAiKeyReady(hasSessionAiApiKey(settingsProvider)); }}>
-            ذخیره تا پایان این اجرا
-          </Btn>
-          <Btn disabled={!aiKeyReady} onClick={() => { clearSessionAiApiKey(settingsProvider); setAiKeyDraft(""); setAiKeyReady(false); }}>
-            حذف کلید
-          </Btn>
+          <Btn tone="primary" onClick={() => { setSessionAiApiKey(aiKeyDraft, "openai"); setAiKeyReady(hasSessionAiApiKey("openai")); setConnectionTestMessage("کلید فقط در حافظه موقت برنامه قرار گرفت؛ برای اطمینان از اتصال، آزمایش را اجرا کنید."); }}>ذخیره موقت کلید</Btn>
+          <Btn disabled={!aiKeyReady} onClick={() => { clearSessionAiApiKey("openai"); setAiKeyDraft(""); setAiKeyReady(false); setConnectionTestMessage("کلید موقت حذف شد."); }}>حذف کلید</Btn>
         </div>
-        {settingsProvider === "deepseek" ? <Btn disabled={!aiKeyDraft.trim() || connectionTestBusy} onClick={() => {
-          setConnectionTestBusy(true);
-          setConnectionTestMessage("");
-          void testDeepSeekConnection(aiKeyDraft).then((model) => {
-            setSessionAiApiKey(aiKeyDraft, "deepseek");
-            patchSettings({ aiProvider: "deepseek" });
-            setAiKeyReady(true);
-            setConnectionTestMessage(`اتصال موفق است؛ مدل پاسخ‌گو: ${model}. هیچ اطلاعات پرونده‌ای در این آزمایش ارسال نشد.`);
+        <Btn tone="primary" disabled={!aiKeyDraft.trim() || connectionTestBusy} onClick={() => {
+          setConnectionTestBusy(true); setConnectionTestMessage("");
+          void testAiConnection(aiKeyDraft).then((model) => {
+            setSessionAiApiKey(aiKeyDraft, "openai"); setAiKeyReady(true);
+            setConnectionTestMessage(`اتصال موفق است؛ مدل پاسخ‌گو: ${model}. اطلاعات پرونده در این آزمایش ارسال نشد.`);
           }).catch((error: unknown) => setConnectionTestMessage(error instanceof Error ? error.message : "آزمایش اتصال ناموفق بود."))
             .finally(() => setConnectionTestBusy(false));
-        }}>{connectionTestBusy ? "در حال آزمایش اتصال…" : "آزمایش اتصال DeepSeek (بدون پرونده)"}</Btn> : null}
+        }}>{connectionTestBusy ? "در حال آزمایش اتصال…" : "آزمایش اتصال OpenAI (بدون پرونده)"}</Btn>
         {connectionTestMessage ? <Banner tone={connectionTestMessage.startsWith("اتصال موفق") ? "neutral" : "warn"}>{connectionTestMessage}</Banner> : null}
-        <p className="text-xs text-muted">{aiKeyReady ? `کلید ${settingsProvider} در حافظه موقت حاضر است.` : `کلید ${settingsProvider} ثبت نشده است.`}</p>
-        <p className="text-xs text-muted">کلید فقط در حافظه موقت همین اجرا می‌ماند و در پرونده یا تنظیمات ذخیره نمی‌شود؛ با این حال در برنامهٔ کلاینتی که مستقیم به API وصل می‌شود، کلید از نظر فنی کاملاً محرمانه نیست. برای استفاده سازمانی، کلید شخصی را داخل APK عمومی توزیع نکنید. رونویسی صوت و پیشنهاد نقش گوینده فقط از Groq استفاده می‌کنند؛ بقیه ارائه‌دهندگان برای تحلیل متن هستند. راه دریافت کلید: Groq console.groq.com/keys · DeepSeek platform.deepseek.com/api_keys · OpenAI platform.openai.com/api-keys · OpenRouter openrouter.ai/settings/keys · Mistral console.mistral.ai/api-keys · Cerebras cloud.cerebras.ai. مدل DeepSeek برای تحلیل متن به اینترنت و اعتبار/سهمیه حساب نیاز دارد؛ مدل‌های رایگان، سهمیه و دسترسی منطقه‌ای ممکن است تغییر کنند و در این برنامه از راه دور تضمین نمی‌شوند.</p>
-      </Panel>
-      <label className="block text-sm text-muted">قفل خودکار</label>
+        <p className="text-xs leading-normal text-muted">{aiKeyReady ? "کلید OpenAI در حافظه موقت حاضر است." : "کلید OpenAI ثبت نشده است."}</p>
+        <p className="text-xs leading-normal text-muted">کلید در پرونده و تنظیمات ذخیره نمی‌شود و با قفل برنامه پاک می‌شود؛ اما در برنامه‌ای که مستقیم از گوشی به API وصل می‌شود، کلید در برابر کاربر دستگاه کاملاً محرمانه نیست. کلید سازمانی مشترک را داخل APK عمومی قرار ندهید. دریافت کلید: platform.openai.com/api-keys.</p>
+      </Panel>      <label className="block text-sm text-muted">قفل خودکار</label>
       <div className="grid grid-cols-4 gap-2">
         {[1, 5, 15, 0].map((minutes) => (
           <Btn key={minutes} tone={state.settings.autoLockMin === minutes ? "primary" : "ghost"} onClick={() => patchSettings({ autoLockMin: minutes })}>
@@ -1536,12 +1510,12 @@ function SettingsScreen() {
 function MethodScreen() {
   return (
     <div className="no-print flex flex-col gap-3 py-4 text-sm leading-normal">
-      <h1 className="text-xl font-medium">راهنمای سریع نسخه ۶</h1>
+      <h1 className="text-xl font-medium">راهنمای سریع نسخه ۷</h1>
       <Panel>
         <h2 className="font-medium">مصاحبه خودکار</h2>
         <ol className="mt-2 list-decimal pe-4">
           <li>پرونده را بسازید و رضایت ضبط را ثبت کنید.</li>
-          <li>در تنظیمات، کلید API سرویس Groq را وارد و فقط تا بسته‌شدن برنامه ذخیره کنید.</li>
+          <li>در تنظیمات، کلید OpenAI را وارد کنید؛ کلید تا قفل/بسته‌شدن برنامه فقط در حافظه می‌ماند.</li>
           <li>در صفحه آمادگی، رضایت ارسال صوت و متن برای پردازش ابری همین پرونده را فعال کنید.</li>
           <li>ضبط را شروع کنید؛ هنگام پایان، صوت ابتدا در گوشی ذخیره می‌شود. سپس گفتار به متن، پیشنهاد نقش گوینده و پیشنهاد اتصال متن به سؤال‌ها خودکار اجرا می‌شوند.</li>
         </ol>
