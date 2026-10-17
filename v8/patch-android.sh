@@ -4,14 +4,20 @@ MANIFEST=android/app/src/main/AndroidManifest.xml
 GRADLE=android/app/build.gradle
 
 add_perm() {
-  grep -q "$1" "$MANIFEST" || sed -i "s#<uses-permission android:name=\\"android.permission.INTERNET\\" />#<uses-permission android:name=\\"android.permission.INTERNET\\" />\\n    $2#" "$MANIFEST"
-  grep -q "$1" "$MANIFEST" || { echo "::error::failed to add $1"; exit 1; }
+  local permission="$1"
+  local declaration="$2"
+  if ! grep -q "android.permission.$permission" "$MANIFEST"; then
+    sed -i "/<manifest /a\\    $declaration" "$MANIFEST"
+  fi
+  grep -q "android.permission.$permission" "$MANIFEST" || { echo "::error::failed to add $permission"; exit 1; }
 }
 add_perm RECORD_AUDIO '<uses-permission android:name="android.permission.RECORD_AUDIO" />'
 add_perm MODIFY_AUDIO_SETTINGS '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />'
 add_perm WAKE_LOCK '<uses-permission android:name="android.permission.WAKE_LOCK" />'
 # Microphone is optional so the app can install on devices without a microphone.
-grep -q 'hardware.microphone' "$MANIFEST" || sed -i 's#<application#<uses-feature android:name="android.hardware.microphone" android:required="false" />\\n    <application#' "$MANIFEST"
+if ! grep -q 'hardware.microphone' "$MANIFEST"; then
+  sed -i '/<manifest /a\    <uses-feature android:name="android.hardware.microphone" android:required="false" />' "$MANIFEST"
+fi
 
 # Interview data must not go to cloud backup.
 sed -i 's#android:allowBackup="true"#android:allowBackup="false"#' "$MANIFEST"
