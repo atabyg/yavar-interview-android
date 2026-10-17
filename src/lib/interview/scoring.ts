@@ -190,7 +190,7 @@ export function evaluate(c: CaseFile): EvalResult {
   let suggestion: Suggestion;
   if (redLines.length > 0) suggestion = "red_line";
   else if (missingIds.length > 0 || ignoredInvalidFullScoreIds.length > 0) suggestion = "incomplete";
-  else if (c.deduction.requested > 0 && ded.applied === 0) suggestion = "deduction_undocumented";
+  else if (ded.rejected !== null) suggestion = "deduction_undocumented";
   else if (c.kind === "urgent" && (unresolvedZeroIds.length > 0 || (c.clinicalGateActive && !c.clinicalCleared))) suggestion = "urgent_needs_full_or_specialist";
   else if (c.kind === "urgent" && net >= 9) suggestion = "urgent_conditional_review";
   else if (c.kind === "urgent" && net >= 6) suggestion = "urgent_defer_full";
@@ -233,6 +233,7 @@ export function closeBlockers(c: CaseFile, result: EvalResult): string[] {
   }
   if (c.kind === "urgent" && !c.urgentReason.trim()) blocks.push("علت استفاده از نسخه فوری ثبت نشده است");
   if (result.redLines.length > 0) blocks.push("وجود خط قرمز باز است؛ تأیید/تصمیم نهایی تا رفع مانع متوقف می‌شود");
+  if (c.kind === "full" && !result.criticalGatePassed) blocks.push("دروازه حیاتی برقرار نیست؛ ح۱ تا ح۱۲ باید حداقل ۱۸ از ۲۴ و بدون صفر حل‌نشده داشته باشند");
   if (result.suggestion === "incomplete" || result.suggestion === "deduction_undocumented") {
     blocks.push("جمع‌بندی هنوز قابل امضا نیست");
   }
