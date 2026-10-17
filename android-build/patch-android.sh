@@ -33,8 +33,9 @@ EOF
 
 # Set explicit V4 package metadata (unique appId is supplied by capacitor.config.json).
 BUILD=android/app/build.gradle
-sed -E -i 's/versionCode [0-9]+/versionCode 4/' "$BUILD"
-sed -E -i 's/versionName "[^"]+"/versionName "4.0.0"/' "$BUILD"
+sed -E -i 's/versionCode[[:space:]]*=?[[:space:]]*[0-9]+/versionCode 4/' "$BUILD"
+sed -E -i 's/versionName[[:space:]]*=?[[:space:]]*"[^"]+"/versionName "4.0.0"/' "$BUILD"
+grep -q 'applicationId "com.yavarshahrha.interview.v4"' "$BUILD" || { echo "::error::Unexpected V4 applicationId"; exit 1; }
 grep -q 'versionCode 4' "$BUILD" || { echo "::error::Could not set V4 versionCode"; exit 1; }
 grep -q 'versionName "4.0.0"' "$BUILD" || { echo "::error::Could not set V4 versionName"; exit 1; }
 echo "V4 package metadata:"

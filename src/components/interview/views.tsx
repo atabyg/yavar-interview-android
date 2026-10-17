@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, FileSpreadsheet, Lock, Mic, Pause, Play, Plus, Printer, Sparkles, Square, Trash2 } from "lucide-react";
+import { FileSpreadsheet, Lock, Mic, Pause, Play, Plus, Printer, Sparkles, Square, Trash2 } from "lucide-react";
 import { useInterview } from "@/components/interview/context";
 import { Area, Banner, Btn, Check as CheckRow, Field, Panel } from "@/components/interview/ui";
 import { createEducationalCase, createEmptyCase, withAudit } from "@/lib/interview/factory";
@@ -22,7 +22,6 @@ import type { Answer, AnswerStatus, CaseFile, Segment, Speaker } from "@/lib/int
 import { applyAiSuggestionToCase, requestAiSuggestions, suggestTranscriptSpeakersWithGroq, transcribeAudioWithGroq } from "@/lib/interview/ai-assist";
 import type { AiAssistResult, AiProvider, AiQuestionSuggestion } from "@/lib/interview/ai-assist";
 import { isNativeAndroid, savePdfToPublicStorage, sharePdf } from "@/lib/interview/native-exports";
-import { FORM_WORKFLOW } from "@/lib/interview/forms";
 import { getMissingCaseFields, questionCompletionFromSegments, reviewSegment, runFinalTranscriptReview, suggestMetadata } from "@/lib/interview/v3-review";
 import { downloadCaseWorkbook } from "@/lib/interview/v3-export";
 
@@ -1147,48 +1146,6 @@ function DeductionEditor() {
   );
 }
 
-function ApproveButton({ who, label, done }: { who: "expert" | "second"; label: string; done: boolean }) {
-  const { active, patchActive, state } = useInterview();
-  const [open, setOpen] = useState(false);
-  if (!active) return null;
-  return (
-    <>
-      <Btn
-        tone={done ? "primary" : "ghost"}
-        onClick={() => setOpen(true)}
-        disabled={who === "second" && !active.expertApprovedAt}
-      >
-        {done ? <Check className="size-4" aria-hidden /> : null}
-        {label}
-        {done ? " شد" : ""}
-      </Btn>
-      {open ? (
-        <PinDialog
-          title="تأیید با رمز دستگاه"
-          onClose={() => setOpen(false)}
-          onSuccess={() => {
-            const stamp = new Date().toISOString();
-            patchActive((file) => {
-              const next = {
-                ...file,
-                expertApprovedAt: who === "expert" ? stamp : file.expertApprovedAt,
-                secondApprovedAt: who === "second" ? stamp : file.secondApprovedAt,
-              };
-              return withAudit(
-                { ...next, status: "review" },
-                who === "expert" ? "approve_first" : "approve_second",
-                "timestamp-only",
-              );
-            }, false);
-            setOpen(false);
-          }}
-          pinRecord={state.pin}
-        />
-      ) : null}
-    </>
-  );
-}
-
 function ReportScreen() {
   const { active, state, patchActive } = useInterview();
   const [hash, setHash] = useState("");
@@ -1363,9 +1320,6 @@ function SettingsScreen() {
           </Btn>
         ))}
       </div>
-      <p className="text-sm leading-normal text-muted">
-        تشخیص گفتار مرورگر به‌صورت پیش‌فرض خاموش است؛ فعال‌سازی احتمالی فقط با انتخاب صریح در همان جلسه انجام می‌شود و ممکن است پردازش بیرونی داشته باشد. نسخه آفلاین/روی‌دستگاه هنوز نیازمند پیاده‌سازی و آزمون دستگاهی است.
-      </p>
       <Field label="عبارت پایان ضبط" value={phrase} onChange={setPhrase} type="password" />
       <Btn onClick={() => setPinOpen("phrase")}>ذخیره عبارت پایان</Btn>
       <p className="text-sm leading-normal text-muted">
@@ -1399,73 +1353,24 @@ function SettingsScreen() {
 function MethodScreen() {
   return (
     <div className="no-print flex flex-col gap-3 py-4 text-sm leading-normal">
-      <h1 className="text-xl font-medium">حدود این نسخه</h1>
-      <Banner>
-        نسخه ۴ آزمایشی است؛ تا آزمون عملی روی دستگاه و تأیید سازمان، تصمیم رسمی را فقط بر اساس این برنامه نگیرید. فایل‌های مرجع ۱۴۰۵ با معیارهای رسمی به بانک سؤال پیوند خورده‌اند؛ بسته فرم‌ها و متن رضایت همچنان پیش‌نویس برای بازبینی حقوقی است.
-      </Banner>
+      <h1 className="text-xl font-medium">راهنمای سریع نسخه ۴</h1>
       <Panel>
-        <h2 className="font-medium">مقایسهٔ مسیر گفتار، بدون ادعای دقت فارسی روی ردمی ۸</h2>
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full border-collapse text-start">
-            <thead>
-              <tr>
-                {["گزینه", "فارسی", "آفلاین", "ردمی ۸", "حریم"].map((heading) => (
-                  <th key={heading} className="border border-line p-2 font-medium">{heading}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="border border-line p-2">Vosk، مدل کوچک فارسی</td>
-                <td className="border border-line p-2">مدل هست؛ محاوره معمولاً ضعیف‌تر است</td>
-                <td className="border border-line p-2">بله، حدود ۵۰ مگابایت، Apache-2.0</td>
-                <td className="border border-line p-2">احتمال اجرا هست؛ اینجا آزمون نشد</td>
-                <td className="border border-line p-2">روی دستگاه</td>
-              </tr>
-              <tr>
-                <td className="border border-line p-2">sherpa-onnx و شناوا کوچک</td>
-                <td className="border border-line p-2">مدل فارسی ۲۰۲۶، FastConformer</td>
-                <td className="border border-line p-2">بله؛ حجم int8 باید جدا سنجیده شود</td>
-                <td className="border border-line p-2">نامشخص تا بنچمارک دستگاه</td>
-                <td className="border border-line p-2">روی دستگاه</td>
-              </tr>
-              <tr>
-                <td className="border border-line p-2">Whisper tiny از راه sherpa</td>
-                <td className="border border-line p-2">چندزبانه؛ فارسی محاوره‌ای بدون تنظیم ضعیف است</td>
-                <td className="border border-line p-2">حدود ۱۰۰ مگابایت</td>
-                <td className="border border-line p-2">کند یا سنگین برای رم کم</td>
-                <td className="border border-line p-2">روی دستگاه؛ مجوز وزن جداست</td>
-              </tr>
-              <tr>
-                <td className="border border-line p-2">گفتار مرورگر یا ابر</td>
-                <td className="border border-line p-2">متغیر</td>
-                <td className="border border-line p-2">خیر</td>
-                <td className="border border-line p-2">به شبکه و سازنده وابسته است</td>
-                <td className="border border-line p-2">ممکن است صوت خارج شود؛ پیش‌فرض خاموش</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <h2 className="font-medium">مصاحبه خودکار</h2>
+        <ol className="mt-2 list-decimal pe-4">
+          <li>پرونده را بسازید و رضایت ضبط را ثبت کنید.</li>
+          <li>در تنظیمات، کلید API سرویس Groq را وارد و فقط تا بسته‌شدن برنامه ذخیره کنید.</li>
+          <li>در صفحه آمادگی، رضایت ارسال صوت و متن برای پردازش ابری همین پرونده را فعال کنید.</li>
+          <li>ضبط را شروع کنید؛ هنگام پایان، صوت ابتدا در گوشی ذخیره می‌شود. سپس گفتار به متن، پیشنهاد نقش گوینده و پیشنهاد اتصال متن به سؤال‌ها خودکار اجرا می‌شوند.</li>
+        </ol>
       </Panel>
       <Panel>
-        <h2 className="font-medium">جریان فرم‌های مرجع F۰۰ تا F۰۹</h2>
-        <p className="mt-1 text-sm text-muted">این فهرست از بسته فرم‌ها ویرایش ۵ استخراج شده است. خود بسته برای بررسی معاونت حقوقی است و این صفحه جایگزین امضا، فرم کاغذی یا تأیید سازمانی نیست. بانک ۲۴ سؤال F02 همین بسته با بانک ۲۴ سؤال شیوه‌نامه نهایی یکسان نیست؛ تا رفع تعارض، امتیازدهی این نسخه به بانک شیوه‌نامه اصلی (ح۱ تا ح۱۲ و ۱۳ تا ۲۴) تکیه می‌کند و فرم F02 به‌عنوان فرم کامل قابل اجرا/امضای نهایی تلقی نمی‌شود.</p>
-        <div className="mt-2 flex flex-col gap-2">
-          {FORM_WORKFLOW.map((form) => <div key={form.code} className="rounded-sm border border-line p-2"><p className="font-medium">{form.code} · {form.title}</p><p className="text-sm text-muted">{form.when}</p><p className="text-sm">{form.purpose}</p></div>)}
-        </div>
+        <h2 className="font-medium">محدودیت مهم</h2>
+        <p className="mt-1">کلید API لازم است؛ داخل APK یا پرونده ذخیره نمی‌شود. بدون کلید یا رضایت ابری، صوت فقط محلی نگهداری می‌شود. فایل‌های بیشتر از ۲۵ مگابایت با مسیر فعلی تبدیل ابری پردازش نمی‌شوند.</p>
+        <p className="mt-1">مدل گفتار و مدل زبانی گوینده را قطعی تشخیص نمی‌دهند. همه متن‌ها و نقش‌ها را بازبینی کنید؛ هیچ امتیاز رسمی یا تصمیم ارجاع خودکار تغییر نمی‌کند. دسترسی سرویس، هزینه و سهمیه از ایران تضمین‌شده نیست.</p>
       </Panel>
       <Panel>
-        <h2 className="font-medium">یادآوری‌های ایمنی و حریم خصوصی</h2>
-        <ul className="mt-2 list-disc pe-4"><li>رضایت ارجاع، رضایت ضبط و رضایت AI ابری سه موضوع جدا هستند.</li><li>فایل‌های مقصد نباید شامل پرونده درمانی یا قضایی کامل باشند؛ فقط حداقل اطلاعات مجاز منتقل شود.</li><li>هر نقص توقف‌آور انتقال را متوقف می‌کند؛ تعویق به معنی رد یا محرومیت نیست.</li><li>نسخه فوری فقط غربالگری است؛ مصاحبه کامل ظرف دو هفته پس از شروع کار و پیگیری ۳۰ روزه طبق شیوه‌نامه لازم است.</li></ul>
-      </Panel>
-      <Panel>
-        <h2 className="font-medium">آنچه این نسخه عمداً انجام نمی‌دهد</h2>
-        <ul className="mt-2 list-disc pe-4">
-          <li>قبول یا رد مددجو، تشخیص بیماری، یا برچسب دروغ.</li>
-          <li>تعیین امتیاز رسمی، تشخیص بالینی یا تصمیم ارجاع توسط هوش مصنوعی.</li>
-          <li>دور زدن تأیید دو کارشناس با نام متفاوت.</li>
-          <li>ارسال پرونده یا PDF به سرور؛ تنها درخواست AI با رضایت مستقل و انتخاب صریح کارشناس از شبکه استفاده می‌کند.</li>
-        </ul>
+        <h2 className="font-medium">حریم خصوصی</h2>
+        <p className="mt-1">صوت فقط پس از رضایت صریح پرونده ارسال می‌شود. برای اطلاعات واقعی مددجو، مجوز سازمان و سیاست نگهداری سرویس را بررسی کنید. گزینه ورود با اثر انگشت و تأیید کارشناس دوم در این نسخه حذف شده‌اند.</p>
       </Panel>
     </div>
   );
