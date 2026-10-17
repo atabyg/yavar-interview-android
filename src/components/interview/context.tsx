@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { CaseFile, PinRecord, Settings, View } from "@/lib/interview/types";
+import { authenticateBiometric } from "@/lib/interview/native-exports";
 import {
   DEFAULT_SETTINGS,
   createPin,
@@ -27,7 +28,7 @@ interface Api {
   active: CaseFile | null;
   setupPin: (pin: string) => Promise<void>;
   unlockWith: (pin: string) => Promise<"ok" | "bad" | "wait">;
-  unlockWithBiometric: () => void;
+  unlockWithBiometric: () => Promise<boolean>;
   lock: () => void;
   go: (view: View) => void;
   openCase: (id: string, view?: View) => void;
@@ -127,10 +128,13 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       });
       return "bad";
     },
-    unlockWithBiometric() {
+    async unlockWithBiometric() {
       const current = stateRef.current;
-      if (!current.pin) return;
+      if (!current.pin || !current.settings.biometricEnabled || Date.now() < current.lockUntil) return false;
+      const ok = await authenticateBiometric().catch(() => false);
+      if (!ok) return false;
       setState((prev) => ({ ...prev, unlocked: true, failedAttempts: 0, lockUntil: 0, view: "home" }));
+      return true;
     },
     lock() {
       setState((current) => ({ ...current, unlocked: false, view: "lock" }));
