@@ -19,6 +19,8 @@ export function blankAnswer(): Answer {
 export function blankDeduction(): Deduction {
   return {
     requested: 0,
+    urgentEmotion: 0,
+    urgentCraving: 0,
     evidence: "",
     contextTime: "",
     repetition: "",
