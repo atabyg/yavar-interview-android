@@ -31,4 +31,11 @@ public class MainActivity extends BridgeActivity {
 }
 EOF
 
-echo "minSdkVersion:"; grep -n 'minSdkVersion' android/variables.gradle || true
+# Set explicit V4 package metadata (unique appId is supplied by capacitor.config.json).
+BUILD=android/app/build.gradle
+sed -E -i 's/versionCode [0-9]+/versionCode 4/' "$BUILD"
+sed -E -i 's/versionName "[^"]+"/versionName "4.0.0"/' "$BUILD"
+grep -q 'versionCode 4' "$BUILD" || { echo "::error::Could not set V4 versionCode"; exit 1; }
+grep -q 'versionName "4.0.0"' "$BUILD" || { echo "::error::Could not set V4 versionName"; exit 1; }
+echo "V4 package metadata:"
+grep -E 'applicationId|versionCode|versionName|minSdkVersion' "$BUILD" android/variables.gradle || true
