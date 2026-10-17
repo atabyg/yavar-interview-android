@@ -117,6 +117,8 @@ export interface Settings {
   endPhrase: string;
   allowBrowserSpeech: boolean;
   biometricEnabled: boolean;
+  aiProvider?: "deepseek" | "openai" | "groq";
+  requirePinOnLaunch?: boolean;
 }
 
 export interface PinRecord {
