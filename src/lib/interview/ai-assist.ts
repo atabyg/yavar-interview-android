@@ -30,7 +30,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function validate(payload: unknown, segments: Segment[]): AiAssistResult {
+function validate(payload: unknown, segments: Segment[], actualModel: string): AiAssistResult {
   if (!isRecord(payload) || typeof payload.model !== "string" || !Array.isArray(payload.suggestions)) {
     throw new Error("پاسخ هوش مصنوعی ساختار معتبر ندارد؛ هیچ پیشنهادی اعمال نشد.");
   }
@@ -59,7 +59,7 @@ function validate(payload: unknown, segments: Segment[]): AiAssistResult {
     };
   });
   return {
-    model: typeof payload.model === "string" ? payload.model.slice(0, 100) : "مدل اعلام‌شده نامشخص",
+    model: actualModel,
     suggestions,
     disclaimer: "پیشنهاد کمکی است؛ تشخیص، امتیاز رسمی و تصمیم ارجاع نیست. کارشناس باید شاهد و انتساب گوینده را بازبینی کند.",
   };
@@ -122,7 +122,7 @@ export async function requestAiSuggestions(args: {
     let parsed: unknown;
     try { parsed = JSON.parse(envelope.choices[0].message.content); }
     catch { throw new Error("خروجی مدل JSON معتبر نیست؛ هیچ پیشنهادی اعمال نشد."); }
-    return validate(parsed, args.segments);
+    return validate(parsed, args.segments, model);
   } finally {
     clearTimeout(timeout);
     args.signal?.removeEventListener("abort", onAbort);
