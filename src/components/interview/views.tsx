@@ -1307,7 +1307,26 @@ function ReportScreen() {
 
   function buildReportHtml(): string {
     const body = sheetRef.current?.innerHTML ?? "";
-    return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name}</title><style>@page{size:A4;margin:12mm}body{font-family:Tahoma,sans-serif;line-height:1.65;color:#222;direction:rtl;text-align:right;font-size:10pt}h1{font-size:17pt}table{width:100%;border-collapse:collapse;table-layout:fixed;page-break-inside:auto}tr{page-break-inside:avoid;page-break-after:auto}td,th{border:1px solid #999;padding:5px;vertical-align:top;text-align:right;overflow-wrap:anywhere}article{border:0!important;padding:0!important}.text-muted{color:#555}.text-sm{font-size:9pt}.text-xl{font-size:17pt}.mt-3{margin-top:10px}.mt-2{margin-top:6px}.mt-1{margin-top:3px}.grid{display:block}.no-print{display:none!important}</style></head><body>${body}</body></html>`;
+    return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name}</title><style>
+@page{size:A4;margin:12mm}
+*{box-sizing:border-box}
+body{font-family:Tahoma,sans-serif;line-height:1.7;color:#222;direction:rtl;text-align:right;font-size:9.5pt;overflow-wrap:anywhere}
+h1{font-size:16pt;line-height:1.5;break-after:avoid}
+h2{font-size:12pt;break-after:avoid}
+p,li,dd,dt,div{overflow-wrap:anywhere;word-break:normal}
+table{width:100%;border-collapse:collapse;table-layout:fixed;page-break-inside:auto;direction:rtl}
+thead{display:table-header-group}
+tfoot{display:table-footer-group}
+tr{break-inside:avoid;page-break-inside:avoid;page-break-after:auto}
+td,th{border:1px solid #777;padding:5px;vertical-align:top;text-align:right;white-space:normal;overflow-wrap:anywhere;word-break:break-word}
+th{background:#eee;font-weight:bold}
+article,.report{border:0!important;padding:0!important}
+section{margin:8px 0}
+ul,ol{padding-right:18px}
+.text-muted{color:#555}.text-sm{font-size:8.5pt}.text-xl{font-size:16pt}
+.mt-3{margin-top:10px}.mt-2{margin-top:6px}.mt-1{margin-top:3px}
+.grid{display:block}.no-print{display:none!important}
+</style></head><body>${body}</body></html>`;
   }
 
 async function exportPdfToPublicFolder() {
