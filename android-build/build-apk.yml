@@ -1,0 +1,85 @@
+name: Build Android APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Prepare web sources
+        run: |
+          set -euo pipefail
+          rm -rf app _zip
+          mkdir app
+          if [ -f src/components/interview/workstation.tsx ]; then
+            echo "Using src/ from the repository"
+            cp -r src app/src
+            if [ -d public ]; then cp -r public app/public; fi
+          else
+            ZIP=$(ls ./*.zip 2>/dev/null | head -n1 || true)
+            if [ -z "$ZIP" ]; then
+              echo "::error::No source found. Upload the project zip (e.g. grok-workspace.zip) or the src/ folder to the repository root."
+              exit 1
+            fi
+            echo "Using sources from $ZIP"
+            mkdir _zip
+            unzip -q "$ZIP" -x '.vercel/*' 'node_modules/*' -d _zip
+            cp -r _zip/src app/src
+            if [ -d _zip/public ]; then cp -r _zip/public app/public; fi
+          fi
+          test -f app/src/components/interview/workstation.tsx
+          cp -r android-build/. app/
+
+      - name: Install dependencies and build web app
+        working-directory: app
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          test -f dist/index.html
+
+      - name: Add and patch Android project
+        working-directory: app
+        run: |
+          npx cap add android
+          bash patch-android.sh
+          npx cap sync android
+
+      - name: Build debug APK
+        working-directory: app/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Collect APK
+        run: |
+          cp app/android/app/build/outputs/apk/debug/app-debug.apk yavar-interview-debug.apk
+          ls -l yavar-interview-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yavar-interview-apk
+          path: yavar-interview-debug.apk
+
+      - name: Publish release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: APK build ${{ github.run_number }}
+          files: yavar-interview-debug.apk
