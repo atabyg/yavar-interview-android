@@ -144,6 +144,7 @@ function PinPad({ value, onChange }: { value: string; onChange: (value: string) 
 
 export function TopBar() {
   const { state, active, go, lock } = useInterview();
+  const previousView: Record<string, "home" | "case" | "ready" | "record" | "transcript" | "questions" | "summary"> = { case: "home", ready: "case", record: "ready", transcript: "record", questions: "transcript", summary: "questions", report: "summary", settings: "home", method: "home" };
   const steps: { view: "case" | "ready" | "record" | "transcript" | "questions" | "summary" | "report"; label: string }[] = [
     { view: "case", label: "پرونده" },
     { view: "ready", label: "آمادگی" },
@@ -160,9 +161,9 @@ export function TopBar() {
           <button className="text-base font-medium" onClick={() => go("home")}>
             میز مصاحبه شغلی
           </button>
-          <p className="text-sm text-muted">خروجی سامانه تصمیم نهایی ارجاع نیست.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Btn className="min-h-11 px-3" disabled={state.view === "home" || state.view === "lock"} onClick={() => go(previousView[state.view] ?? "home")}>بازگشت</Btn>
           <Btn className="min-h-11 px-3" onClick={() => go("method")}>
             حدود نسخه
           </Btn>
