@@ -84,7 +84,7 @@ export async function requestAiSuggestions(args: {
   const endpoint = args.provider === "deepseek"
     ? "https://api.deepseek.com/chat/completions"
     : "https://api.openai.com/v1/chat/completions";
-  const model = args.provider === "deepseek" ? "deepseek-chat" : "gpt-4o-mini";
+  const model = args.provider === "deepseek" ? "deepseek-flash" : "gpt-4o-mini";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45_000);
   const onAbort = () => controller.abort();
