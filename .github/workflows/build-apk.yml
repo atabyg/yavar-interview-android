@@ -4,6 +4,14 @@ on:
   push:
     branches:
       - version-7-unified-ai
+  pull_request:
+    branches:
+      - version-6-deepseek-api
+    paths:
+      - "src/**"
+      - "android-build/**"
+      - "github/workflows/build-apk.yml"
+      - ".github/workflows/build-apk.yml"
   workflow_dispatch:
 
 permissions:
