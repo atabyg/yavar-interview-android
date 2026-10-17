@@ -798,7 +798,8 @@ function TranscriptScreen() {
   return (
     <div className="flex flex-col gap-3 py-4">
       <h1 className="text-xl font-medium">متن و گوینده</h1>
-      <Banner>سؤال مصاحبه‌کننده پاسخ مددجو نیست. اگر گوینده مطمئن نیست، وضعیت را نامشخص بگذارید و امتیاز ۲ ندهید.</Banner>
+      {active.autoProcessingNote ? <Panel><p className="text-sm leading-normal">{active.autoProcessingNote}</p></Panel> : null}
+      <Banner>متن تولیدشده و انتساب گوینده ممکن است خطا داشته باشد؛ پیشنهاد هوش مصنوعی جایگزین بازبینی کارشناس نیست.</Banner>
       <Panel>
         <h2 className="font-medium">تحلیل محلی خودکار</h2>
         <p className="mt-1 text-sm leading-normal">بدون کلید API و بدون ارسال متن به اینترنت، برای هر قطعهٔ ثبت‌شده پیشنهاد نقش گوینده و سؤال احتمالی محاسبه می‌شود. این روش قاعده‌محور است، نه مدل زبانی یا تشخیص قطعی گوینده؛ پیشنهادها را در فهرست پایین بررسی و در صورت نیاز با دکمه‌های نقش اصلاح کنید.</p>
@@ -956,7 +957,7 @@ function QuestionsScreen() {
             <option value="deepseek">DeepSeek API · deepseek-flash</option>
             <option value="openai">OpenAI API</option>
           </select>
-          <Field label="کلید API (فقط برای همین درخواست؛ ذخیره نمی‌شود)" type="password" value={aiKey} onChange={setAiKey} />
+          <Field label="کلید API (فقط در حافظه همین اجرای برنامه)" type="password" value={aiKey} onChange={setAiKey} />
           <Btn tone="primary" disabled={!active.cloudAiConsent || !aiKey.trim() || aiBusy || active.segments.every((s) => s.speaker !== "client")} onClick={() => {
             setAiError("");
             if (!active.cloudAiConsent) { setAiError("ابتدا رضایت مستقل تحلیل ابری را ثبت کنید."); return; }
@@ -1394,7 +1395,7 @@ function MethodScreen() {
     <div className="no-print flex flex-col gap-3 py-4 text-sm leading-normal">
       <h1 className="text-xl font-medium">حدود این نسخه</h1>
       <Banner>
-        این شاخه پیش‌نویس نسخه ۲ است؛ تا اجرای موفق CI، نصب و آزمون روی گوشی نباید جایگزین نسخهٔ قبلی شود. فایل‌های مرجع ۱۴۰۵ با معیارهای رسمی به بانک سؤال پیوند خورده‌اند؛ بسته فرم‌ها و متن رضایت همچنان پیش‌نویس برای بازبینی حقوقی است.
+        نسخه ۴ آزمایشی است؛ تا آزمون عملی روی دستگاه و تأیید سازمان، تصمیم رسمی را فقط بر اساس این برنامه نگیرید. فایل‌های مرجع ۱۴۰۵ با معیارهای رسمی به بانک سؤال پیوند خورده‌اند؛ بسته فرم‌ها و متن رضایت همچنان پیش‌نویس برای بازبینی حقوقی است.
       </Banner>
       <Panel>
         <h2 className="font-medium">مقایسهٔ مسیر گفتار، بدون ادعای دقت فارسی روی ردمی ۸</h2>
