@@ -1,4 +1,5 @@
 name: Build Android APK (V2 branch)
+run-name: Build V2 debug APK
 
 on:
   push:
