@@ -43,18 +43,20 @@ export async function testKey(key) {
   return true;
 }
 
-export async function transcribe(blob, filename, { key, model }) {
-  const run = async (m) => {
-    const fd = new FormData();
-    fd.append("file", blob, filename);
-    fd.append("model", m);
-    fd.append("language", "fa");
-    fd.append("response_format", "json");
-    const r = await call("/audio/transcriptions", { method: "POST", headers: { Authorization: "Bearer " + key }, body: fd });
-    return (await r.json()).text || "";
-  };
-  try { return await run(model); }
-  catch (e) { if (e && (e.status === 400 || e.status === 404) && model !== "whisper-1") return run("whisper-1"); throw e; }
+export async function transcribe(blob, filename, { key, model = "gpt-transcribe" }) {
+  const fd = new FormData();
+  fd.append("file", blob, filename);
+  fd.append("model", model);
+  // gpt-transcribe uses the plural languages parameter; legacy models use language.
+  if (model === "gpt-transcribe") fd.append("languages[]", "fa");
+  else fd.append("language", "fa");
+  fd.append("response_format", "json");
+  const r = await call("/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + key },
+    body: fd,
+  });
+  return (await r.json()).text || "";
 }
 
 export const COMPETENCIES = ["ارتباط و بیان", "دانش و مهارت تخصصی", "حل مسئله و تحلیل", "کار تیمی و تعامل", "انگیزه و تعهد", "اخلاق و رفتار حرفه‌ای"];
