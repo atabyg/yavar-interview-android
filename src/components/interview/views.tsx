@@ -952,7 +952,7 @@ function TranscriptScreen() {
         <p className="mt-1 text-sm text-muted">قطعه‌های گفتگو: {faNum(active.segments.length)} · موارد نیازمند بازبینی: {faNum(active.segments.filter((segment) => reviewSegment(segment).needsHumanReview).length)}</p>
       </Panel>
       <Panel><h2 className="font-medium">بازبینی اولیه گفتگو</h2><p className="mt-1 text-sm">موارد نیازمند بررسی: {faNum(finalIssues.filter((issue) => issue.severity !== "info").length)} · نقص‌ها به‌صورت خودکار تکمیل نمی‌شوند.</p><ul className="mt-2 flex flex-col gap-1">{finalIssues.slice(0, 8).map((issue, index) => <li key={issue.code + index} className={issue.severity === "error" ? "text-danger" : issue.severity === "warning" ? "text-danger" : "text-muted"}>{issue.message}</li>)}</ul><Btn className="mt-2" tone="primary" onClick={() => go("report")}>بازبینی نهایی و تولید گزارش</Btn></Panel>
-      {audioUrl ? <audio controls src={audioUrl} className="w-full" /> : <p className="text-sm text-muted">فایل صوتی ذخیره نشده. می‌توانید متن را دستی وارد کنید.</p>}
+      {audioUrl ? <><audio controls src={audioUrl} className="w-full" /><Btn onClick={() => { const link = document.createElement("a"); link.href = audioUrl; link.download = `yavar-audio-${active.code || active.id.slice(0, 8)}.webm`; link.click(); }}>ذخیره ویس در پوشه انتخابی</Btn></> : <p className="text-sm text-muted">فایل صوتی ذخیره نشده. می‌توانید متن را دستی وارد کنید.</p>}
       <Panel>
         <label className="mb-2 block text-sm text-muted">گوینده قطعه تازه</label>
         <div className="grid gap-2 sm:grid-cols-3">
