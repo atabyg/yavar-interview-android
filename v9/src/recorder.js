@@ -16,7 +16,7 @@ export class Recorder {
   constructor() {
     this.id = ""; this.stream = null; this.mr = null; this.seg = 0; this.n = 0; this.mime = "";
     this.state = "idle"; this.want = false; this.accMs = 0; this.lastResume = 0;
-    this.q = Promise.resolve(); this.onState = () => {}; this.ctx = null; this.analyser = null;
+    this.q = Promise.resolve(); this.onState = () => {}; this.onError = () => {}; this.storageError = null; this.ctx = null; this.analyser = null;
     this.buf = null; this.wake = null; this.timers = []; this.vis = null;
   }
   setState(s) { this.state = s; this.onState(s); }
@@ -24,7 +24,7 @@ export class Recorder {
 
   async start(id, mime, onState) {
     this.id = id; this.mime = mime; this.onState = onState || (() => {});
-    this.seg = 0; this.n = 0; this.accMs = 0; this.want = true;
+    this.seg = 0; this.n = 0; this.accMs = 0; this.want = true; this.storageError = null;
     await this.openStream();
     this.openSegment();
     this.lastResume = Date.now();
@@ -61,7 +61,7 @@ export class Recorder {
     const mr = new MediaRecorder(this.stream, opts);
     const seg = this.seg;
     mr.ondataavailable = (e) => {
-      if (e.data && e.data.size) { const n = this.n++; this.q = this.q.then(() => putChunk(this.id, seg, n, e.data)).catch(() => {}); }
+      if (e.data && e.data.size) { const n = this.n++; this.q = this.q.then(() => putChunk(this.id, seg, n, e.data)).catch((err) => { this.storageError = this.storageError || err || new Error("audio_chunk_write_failed"); try { this.onError(this.storageError); } catch (ignored) {} }); }
     };
     mr.onerror = () => { if (this.want) this.ensureAlive(); };
     mr.onstop = () => { if (this.want && !this.rotating && this.mr === mr && this.state === "recording") this.ensureAlive(); };
