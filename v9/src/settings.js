@@ -29,11 +29,23 @@ export const ANALYSIS_PROVIDERS = {
     models: ["openrouter/free"],
     defaultModel: "openrouter/free",
     keyUrl: "https://openrouter.ai/settings/keys"
+  },
+  mistral: {
+    label: "Mistral AI",
+    models: ["mistral-small-latest", "ministral-8b-latest", "ministral-3b-latest"],
+    defaultModel: "mistral-small-latest",
+    keyUrl: "https://console.mistral.ai/api-keys"
+  },
+  huggingface: {
+    label: "Hugging Face — اعتبار رایگان محدود",
+    models: ["openai/gpt-oss-120b"],
+    defaultModel: "openai/gpt-oss-120b",
+    keyUrl: "https://huggingface.co/settings/tokens"
   }
 };
 export const DEFAULTS = {
   apiKey: "",
-  apiKeys: { openai: "", groq: "", gemini: "", mistral: "", cerebras: "", openrouter: "" },
+  apiKeys: { openai: "", groq: "", gemini: "", mistral: "", cerebras: "", openrouter: "", huggingface: "" },
   transcribeProvider: "offline", transcribeModel: "whisper-large-v3",
   analyzeProvider: "groq", analyzeModel: "openai/gpt-oss-20b",
   questionSet: "critical12", autoProcess: false, autoProcessConsentVersion: 1,
