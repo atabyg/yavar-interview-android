@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# v12 patch: runs after patch-android.sh. Fixes (1) native plugin registration order, (2) version 11,
+# v12 patch: runs after patch-android.sh. Fixes plugin registration order, external file sharing, version 12,
 # (3) stable signing key so a new APK installs OVER an older v11+ install, (4) clean uninstall (no auto-backup/restore leftovers).
 set -euo pipefail
 MANIFEST=android/app/src/main/AndroidManifest.xml
@@ -7,6 +7,7 @@ GRADLE=android/app/build.gradle
 MAIN=$(find android/app/src/main/java -name MainActivity.java | head -n1)
 test -n "$MAIN" || { echo "::error::MainActivity.java not found"; exit 1; }
 PKG=$(grep -m1 '^package ' "$MAIN" | sed 's/package \(.*\);/\1/')
+DIR=$(dirname "$MAIN")
 
 # 1) Capacitor requires registerPlugin() BEFORE super.onCreate(); otherwise OfflineWhisper is "not implemented" on Android
 #    and the Settings page shows the offline-model error.
