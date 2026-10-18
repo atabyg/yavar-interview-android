@@ -1,5 +1,5 @@
 // Provider-neutral API layer. No provider key is bundled in the app.
-const BASES = { openai: "https://api.openai.com/v1", groq: "https://api.groq.com/openai/v1", mistral: "https://api.mistral.ai/v1", cerebras: "https://api.cerebras.ai/v1", openrouter: "https://openrouter.ai/api/v1" };
+const BASES = { openai: "https://api.openai.com/v1", groq: "https://api.groq.com/openai/v1", mistral: "https://api.mistral.ai/v1", cerebras: "https://api.cerebras.ai/v1", openrouter: "https://openrouter.ai/api/v1", huggingface: "https://router.huggingface.co/v1" };
 export class ApiError extends Error { constructor(msg, status) { super(msg); this.status = status; } }
 export function friendly(e) {
   const s = e && e.status;
@@ -26,7 +26,7 @@ async function request(url, init, options = {}) {
       clearTimeout(timer);
       if (r.ok) return r;
       let message = "";
-      try { const body = await r.json(); message = body.error && (body.error.message || body.error.status) || body.message || ""; } catch (e) {}
+      try { const body = await r.json(); message = (typeof body.error === "string" ? body.error : body.error && (body.error.message || body.error.status)) || body.message || ""; } catch (e) {}
       const err = new ApiError(message || ("HTTP " + r.status), r.status);
       if (![408, 429, 500, 502, 503, 504].includes(r.status)) throw err;
       last = err;
@@ -61,6 +61,7 @@ export async function testProviderKey(provider, key) {
   if (provider === "openai") ids = ids.filter((id) => /^(gpt-|o[1-9])/.test(id));
   if (provider === "groq") ids = ids.filter((id) => id.startsWith("openai/gpt-") || /^(llama-|mixtral-|qwen-|deepseek-|meta-llama-)/i.test(id));
   if (provider === "cerebras") ids = ids.filter((id) => ["zai-glm-4.7", "gpt-oss-120b", "llama3.1-8b"].includes(id));
+  if (provider === "huggingface") ids = ids.filter((id) => id === "openai/gpt-oss-120b");
   if (provider === "mistral") ids = ids.filter((id) => /mistral|ministral|codestral|open-mistral/i.test(id) && !/embed|moderation/i.test(id));
   return [...new Set(ids)].sort();
 }
@@ -104,7 +105,7 @@ async function openAiCompatible(provider, key, model, user) {
     r = await request(url, { method: "POST", headers, body: JSON.stringify({ ...baseBody, response_format: { type: "json_object" } }) });
   } catch (e) {
     // Some OpenAI-compatible models do not support JSON mode; retry without that optional parameter.
-    if (e.status !== 400 || !/response.?format|json.?object|json.?mode|structured output|unsupported.*parameter/i.test(String(e.message))) throw e;
+    if (e.status !== 400 || !/response.?format|json.?object|json.?mode|json.*(?:not supported|unsupported)|(?:not supported|unsupported).*json|structured output|unsupported.*parameter/i.test(String(e.message))) throw e;
     r = await request(url, { method: "POST", headers, body: JSON.stringify(baseBody) });
   }
   const d = await r.json();
@@ -129,7 +130,7 @@ export async function analyze(transcript, ctx, opts) {
     "\n\nمتن گفت‌وگو (ممکن است خطاهای تشخیص گفتار داشته باشد؛ ابهام را به‌عنوان قطعیت گزارش نکن):\n" + String(transcript || "").slice(0, 90000);
   let text;
   if (opts.provider === "gemini") text = await gemini(opts.key, opts.model || "gemini-3.7-flash", user);
-  else if (["openai", "groq", "mistral", "cerebras", "openrouter"].includes(opts.provider)) text = await openAiCompatible(opts.provider, opts.key, opts.model, user);
+  else if (["openai", "groq", "mistral", "cerebras", "openrouter", "huggingface"].includes(opts.provider)) text = await openAiCompatible(opts.provider, opts.key, opts.model, user);
   else throw new Error("ارائه‌دهندهٔ تحلیل در تنظیمات معتبر نیست.");
   const j = parseJson(text);
   const list = Array.isArray(j.competencies) ? j.competencies : [];
