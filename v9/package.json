@@ -1,12 +1,13 @@
 {
-  "name": "yavar-interview-v9",
+  "name": "yavar-interview-v11",
   "private": true,
-  "version": "9.0.0",
+  "version": "11.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "npm run build"
+    "test": "npm run build",
+    "capacitor:sync:after": "bash patch-v11.sh"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.0",
