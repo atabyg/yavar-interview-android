@@ -100,6 +100,7 @@ export default function Record({ folders, items = [], onOpen }) {
         questionSet: qs.id, questionSetLabel: qs.label
       });
       rec.current = new Recorder();
+      rec.current.onError = () => { setSpeechError("هشدار مهم: ذخیرهٔ یکی از بخش‌های صوتی ناموفق شد. فضای خالی گوشی را بررسی کنید؛ ممکن است فایل نهایی ناقص باشد."); };
       idRef.current = id;
       await rec.current.start(id, mime, setSt);
       const used = Array.from(new Set([...(s.usedCaseNumbers || []), caseNo]));
@@ -144,7 +145,8 @@ export default function Record({ folders, items = [], onOpen }) {
         questionSet, questionSetLabel: questionSetFor(questionSet).label
       });
       await finalizeAudio(id);
-      await patchInterview(id, { status: "recorded" });
+      await patchInterview(id, { status: "recorded", audioWarning: r.storageError ? "ذخیرهٔ حداقل یک قطعهٔ صوتی با خطا روبه‌رو شد؛ ممکن است بخشی از گفت‌وگو در فایل نهایی نباشد. متن و صوت را پیش از استفاده از گزارش بررسی کنید." : "" });
+      if (r.storageError) toast("هشدار: ذخیرهٔ یک بخش صوتی شکست خورد؛ ممکن است ضبط کامل نباشد.");
       setCandidate(""); setPosition(""); setCaseNumber("");
       const s = getSettings();
       if (s.transcribeProvider === "offline") {
