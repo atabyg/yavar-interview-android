@@ -1,5 +1,5 @@
 // Provider-neutral API layer. No provider key is bundled in the app.
-import { transcriptGuidance, sanitizeQaPairs } from "./transcript-quality";
+import { transcriptGuidance, sanitizeQaPairs } from "./transcript-quality.js";
 const BASES = { openai: "https://api.openai.com/v1", groq: "https://api.groq.com/openai/v1", mistral: "https://api.mistral.ai/v1", cerebras: "https://api.cerebras.ai/v1", openrouter: "https://openrouter.ai/api/v1", huggingface: "https://router.huggingface.co/v1" };
 export class ApiError extends Error { constructor(msg, status) { super(msg); this.status = status; } }
 export function friendly(e) {
