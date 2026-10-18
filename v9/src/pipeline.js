@@ -24,11 +24,17 @@ export async function processInterview(id, options = {}) {
       if (!segs.length) throw new Error("فایل صوتی پیدا نشد.");
 
       if (s.transcribeProvider === "offline") {
+        // Publish progress before native plugin/model checks so the UI cannot appear stuck on "recorded".
+        await patchInterview(id, {
+          status: "transcribing",
+          error: "",
+          step: "بررسی موتور و مدل آفلاین گفتار…"
+        });
         let model;
         try {
           model = await OfflineWhisper.modelStatus();
         } catch (error) {
-          throw new Error("موتور آفلاین تبدیل گفتار روی این گوشی در دسترس نیست (" + String((error && error.message) || error || "") + "). نسخهٔ یاور را به‌روزرسانی کنید.");
+          throw new Error("موتور آفلاین تبدیل گفتار روی این گوشی در دسترس نیست (" + String((error && error.message) || error || "") + "). وضعیت مدل و نصب برنامه را بررسی کنید.");
         }
         if (!model || !model.downloaded) {
           throw new Error("مدل آفلاین همراه برنامه آماده نشد. فضای خالی گوشی را بررسی کنید و نسخهٔ کامل یاور را دوباره نصب کنید.");
