@@ -1,4 +1,4 @@
-name: Build Android APK (v9)
+name: Build Android APK (v11)
 
 on:
   push:
@@ -44,6 +44,10 @@ jobs:
           npx capacitor-assets generate --android
           bash patch-android.sh
           npx cap sync android
+          # Apply the v11 patch once more as an idempotent final guard after Capacitor sync.
+          bash patch-v11.sh
+          grep -Eq 'versionCode 11' android/app/build.gradle
+          grep -Eq 'versionName "11.0.0"' android/app/build.gradle
       - name: Build debug APK
         working-directory: v9/android
         run: |
@@ -53,19 +57,23 @@ jobs:
         working-directory: v9
         run: |
           test -s android/app/build/outputs/apk/debug/app-debug.apk
-          cp android/app/build/outputs/apk/debug/app-debug.apk yavar-interview-v9.apk
-          sha256sum yavar-interview-v9.apk
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BT/aapt" dump badging "$APK" | grep -q "versionCode='11' versionName='11.0.0'"
+          "$BT/apksigner" verify --verbose "$APK"
+          cp "$APK" yavar-interview-v11.apk
+          sha256sum yavar-interview-v11.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: yavar-interview-v9-apk
-          path: v9/yavar-interview-v9.apk
+          name: yavar-interview-v11-apk
+          path: v9/yavar-interview-v11.apk
           if-no-files-found: error
           retention-days: 30
       - name: Publish APK release
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v9-build-${{ github.run_number }}
-          name: Yavar Interview v9 (build ${{ github.run_number }})
-          files: v9/yavar-interview-v9.apk
+          tag_name: v11-build-${{ github.run_number }}
+          name: Yavar Interview v11 (build ${{ github.run_number }})
+          files: v9/yavar-interview-v11.apk
           fail_on_unmatched_files: true

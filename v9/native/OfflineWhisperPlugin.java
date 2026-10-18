@@ -103,6 +103,7 @@ public class OfflineWhisperPlugin extends Plugin {
         result.put("sizeBytes", file.exists() ? file.length() : 0);
         result.put("model", "Whisper tiny-q5_1 multilingual (bundled in APK)");
         result.put("downloadSizeBytes", 0);
+        result.put("nativeReady", nativeLoaded);
         return result;
     }
 
@@ -111,9 +112,13 @@ public class OfflineWhisperPlugin extends Plugin {
         worker.execute(() -> {
             try {
                 ensureBundledModel();
+                // Load JNI now so missing ABI/native-library packaging errors are visible in Settings.
+                ensureNativeLibrary();
                 resolveOnMain(call, status());
-            } catch (Exception e) {
-                rejectOnMain(call, "مدل آفلاین همراه برنامه آماده نشد. برنامه را دوباره نصب کنید.", e);
+            } catch (Throwable e) {
+                Log.e(TAG, "Offline Whisper readiness check failed", e);
+                Exception failure = e instanceof Exception ? (Exception) e : new Exception(e);
+                rejectOnMain(call, "موتور آفلاین Whisper یا کتابخانهٔ بومی روی این گوشی آماده نیست: " + String.valueOf(e.getMessage()), failure);
             }
         });
     }

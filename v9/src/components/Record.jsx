@@ -204,7 +204,7 @@ export default function Record({ folders, items = [], onOpen }) {
           <button className="btn alt sm" onClick={freshCase} title="شمارهٔ جدید"><RefreshCw size={15} /> شمارهٔ جدید</button>
         </div>
         <div className="mut" style={{ marginTop: 5, fontSize: 12 }}>شمارهٔ پرونده به‌صورت تصادفی و غیرتکراری ساخته می‌شود. برای جلسهٔ دوم یک مددجوی قبلی، همان شماره را دستی بنویسید.</div>
-        <input className="inp" style={{ marginTop: 8 }} placeholder="سمت / عنوان شغلی مددجو (اختیاری)" value={position} onChange={(e) => setPosition(e.target.value)} />
+        <input className="inp" style={{ marginTop: 8 }} placeholder="عنوان شغلی یا مسئولیت فعلی مددجو (اختیاری)" value={position} onChange={(e) => setPosition(e.target.value)} />
         {folders.length > 0 && <div className="chips" style={{ marginTop: 10, marginBottom: 0 }}>
           <button className={"chip " + (!folderId ? "on" : "")} onClick={() => setFolderId(null)}>بدون پوشه</button>
           {folders.map((f) => <button key={f.id} className={"chip " + (folderId === f.id ? "on" : "")} onClick={() => setFolderId(f.id)}>{f.name}</button>)}

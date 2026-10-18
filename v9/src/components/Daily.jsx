@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
@@ -16,6 +16,8 @@ async function copyText(text) {
   } catch (e) { return false; }
 }
 
+let dailySaveQueue = Promise.resolve();
+
 async function shareFile(name, text) {
   if (!Capacitor.isNativePlatform()) {
     const a = document.createElement("a");
@@ -30,6 +32,51 @@ export default function Daily({ items }) {
   const days = useMemo(() => groupByDay(items), [items]);
   const [openKey, setOpenKey] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [syncState, setSyncState] = useState("در حال آماده‌سازی آرشیو متنی…");
+
+  useEffect(() => {
+    let cancelled = false;
+    dailySaveQueue = dailySaveQueue.then(async () => {
+      if (cancelled) return;
+      if (!Capacitor.isNativePlatform()) {
+        setSyncState("در نسخهٔ وب برای دریافت فایل TXT از «ذخیره / ارسال فایل» استفاده کنید.");
+        return;
+      }
+      try {
+        await Filesystem.mkdir({ path: "yavar-daily", directory: Directory.Data, recursive: true }).catch(() => {});
+        const activeNames = new Set();
+        let saved = 0;
+        for (const day of days) {
+          if (cancelled) return;
+          if (!day.items.some((i) => !i.dailyExcluded && (i.transcript || "").trim())) continue;
+          const name = dayFileName(day.key);
+          activeNames.add(name);
+          await Filesystem.writeFile({
+            path: "yavar-daily/" + name,
+            data: buildDayText(day.key, day.items),
+            directory: Directory.Data,
+            encoding: Encoding.UTF8,
+            recursive: true
+          });
+          saved++;
+        }
+        try {
+          const listing = await Filesystem.readdir({ path: "yavar-daily", directory: Directory.Data });
+          for (const file of (listing.files || [])) {
+            if (/^yavar-\d{4}-\d{2}-\d{2}\.txt$/.test(file.name) && !activeNames.has(file.name)) {
+              await Filesystem.deleteFile({ path: "yavar-daily/" + file.name, directory: Directory.Data });
+            }
+          }
+        } catch (e) { /* Keep successfully written files if cleanup is unsupported. */ }
+        if (!cancelled) setSyncState(`${saved} فایل TXT شمسی در حافظهٔ داخلی یاور ذخیره شد.`);
+      } catch (error) {
+        if (!cancelled) setSyncState("ذخیرهٔ خودکار TXT موفق نبود؛ فایل را با دکمهٔ ذخیره/ارسال خروجی بگیرید. " + String((error && error.message) || error || ""));
+      }
+    }).catch((error) => {
+      if (!cancelled) setSyncState("خطا در به‌روزرسانی آرشیو TXT: " + String((error && error.message) || error || ""));
+    });
+    return () => { cancelled = true; };
+  }, [days]);
 
   async function toggle(i) { await patchInterview(i.id, { dailyExcluded: !i.dailyExcluded }); }
   async function copy(key, list) {
@@ -44,6 +91,7 @@ export default function Daily({ items }) {
       <div className="card">
         <div className="row"><Sparkles size={16} /><b className="grow">متن روزانه برای هوش مصنوعی</b></div>
         <div className="mut" style={{ marginTop: 6, lineHeight: 1.9 }}>برای هر روز شمسی یک فایل متنی ساخته می‌شود که همهٔ گفت‌وگوهای متنی‌شدهٔ همان روز را به تفکیک مددجو و شمارهٔ پرونده دارد. هر رکورد را می‌توانید از فایل حذف یا دوباره اضافه کنید (صدا و متن اصلی پاک نمی‌شود).</div>
+        <div className="mut" style={{ marginTop: 7, lineHeight: 1.8 }}>{syncState}</div>
         <button className="btn alt sm" style={{ marginTop: 8 }} onClick={async () => toast((await copyText(AI_PROMPT)) ? "پرامپت آمادهٔ هوش مصنوعی کپی شد." : "کپی ممکن نشد.")}><Copy size={14} /> کپی پرامپت پیشنهادی</button>
       </div>
       {days.length === 0 && <div className="card mut">هنوز مصاحبه‌ای ثبت نشده است.</div>}
@@ -55,7 +103,7 @@ export default function Daily({ items }) {
           <div className="card" key={key}>
             <div className="row" onClick={() => setOpenKey(open ? null : key)} style={{ cursor: "pointer" }}>
               <FileText size={17} />
-              <div className="grow"><b>{dayLabel(list[0].createdAt)}</b><div className="mut">{key} — {included} از {list.length} رکورد در فایل</div></div>
+              <div className="grow"><b>{dayLabel(list[0].createdAt)}</b><div className="mut">{key} — {included} متن از {list.length} مصاحبه در فایل</div></div>
               {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </div>
             {open && <div style={{ marginTop: 10 }}>

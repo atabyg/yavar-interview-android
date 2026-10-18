@@ -23,7 +23,18 @@ export async function loadSettings() {
     obj.transcribeModel = "gpt-4o-mini-transcribe";
     if (!obj.transcribeProvider || obj.transcribeProvider === "offline") obj.transcribeProvider = "openai";
   }
-  if (!obj.analyzeProvider && obj.apiKey) obj.analyzeProvider = "openai";
+  // v11: keep old keys/data for compatibility, but do not default to paid or retired models.
+  if (!["groq", "gemini"].includes(obj.analyzeProvider)) obj.analyzeProvider = "groq";
+  const freeAnalysisModels = {
+    groq: ["openai/gpt-oss-20b", "openai/gpt-oss-120b"],
+    gemini: ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
+  };
+  if (!freeAnalysisModels[obj.analyzeProvider].includes(obj.analyzeModel)) {
+    obj.analyzeModel = obj.analyzeProvider === "groq" ? "openai/gpt-oss-20b" : "gemini-3.1-flash-lite";
+  }
+  if (!["offline", "groq"].includes(obj.transcribeProvider)) obj.transcribeProvider = "offline";
+  if (obj.transcribeProvider === "offline") obj.transcribeModel = "whisper-tiny-q5_1-fa";
+  else if (!["whisper-large-v3", "whisper-large-v3-turbo"].includes(obj.transcribeModel)) obj.transcribeModel = "whisper-large-v3";
   if (obj.autoProcessConsentVersion !== 1) { obj.autoProcess = false; obj.autoProcessConsentVersion = 1; }
   cache = { ...DEFAULTS, ...obj, apiKeys };
   return cache;

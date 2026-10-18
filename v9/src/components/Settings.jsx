@@ -8,13 +8,20 @@ import { OfflineWhisper } from "../native-bridge";
 
 const Sw = ({ on, set, label }) => <button className={"sw " + (on ? "on" : "")} style={{ width: "100%" }} onClick={() => set(!on)}><span>{label}</span><i /></button>;
 const PROVIDERS = {
-  openai: { label: "OpenAI", models: ["gpt-4o-mini", "gpt-4.1-mini"], defaultModel: "gpt-4o-mini" },
-  groq: { label: "Groq", models: ["openai/gpt-oss-20b", "llama-3.3-70b-versatile"], defaultModel: "openai/gpt-oss-20b" },
-  gemini: { label: "Google Gemini", models: ["gemini-2.5-flash", "gemini-2.5-flash-lite"], defaultModel: "gemini-2.5-flash" },
-  mistral: { label: "Mistral", models: ["mistral-small-latest"], defaultModel: "mistral-small-latest" }
+  groq: { label: "Groq", models: ["openai/gpt-oss-20b", "openai/gpt-oss-120b"], defaultModel: "openai/gpt-oss-20b" },
+  gemini: { label: "Google Gemini", models: ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite"], defaultModel: "gemini-3.1-flash-lite" }
 };
-const KEY_PROVIDERS = ["openai", "groq", "gemini", "mistral"];
-const modelForTranscription = (provider) => provider === "groq" ? "whisper-large-v3" : "gpt-4o-mini-transcribe";
+const KEY_PROVIDERS = ["groq", "gemini"];
+const FREE_MODELS = {
+  groq: ["openai/gpt-oss-20b", "openai/gpt-oss-120b"],
+  gemini: ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
+};
+const freeModels = (provider, discovered = []) => {
+  const allowed = FREE_MODELS[provider] || [];
+  const found = allowed.filter((id) => discovered.includes(id));
+  return found.length ? found : allowed;
+};
+const modelForTranscription = () => "whisper-large-v3";
 
 export default function Settings({ storage, onChange }) {
   const [s, setS] = useState(getSettings());
@@ -43,14 +50,9 @@ export default function Settings({ storage, onChange }) {
   const selectedKey = keys[keyProvider] || (keyProvider === "openai" ? s.apiKey : "") || "";
   const masked = selectedKey ? selectedKey.slice(0, 5) + "••••••••" + selectedKey.slice(-3) : "";
 
-  function preferredModel(provider, models) {
-    const preferred = {
-      openai: ["gpt-4o-mini", "gpt-4.1-mini"],
-      groq: ["openai/gpt-oss-20b", "llama-3.3-70b-versatile"],
-      gemini: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
-      mistral: ["mistral-small-latest"]
-    };
-    return (preferred[provider] || []).find((id) => models.includes(id)) || models[0] || PROVIDERS[provider].defaultModel;
+  function preferredModel(provider, models = []) {
+    const allowed = FREE_MODELS[provider] || [];
+    return allowed.find((id) => models.includes(id)) || allowed[0] || (PROVIDERS[provider] || PROVIDERS.groq).defaultModel;
   }
 
   async function saveKey() {
@@ -58,7 +60,8 @@ export default function Settings({ storage, onChange }) {
     if (k.length < 12 || /\s/.test(k)) { toast("کلید API ناقص یا دارای فاصله است."); return; }
     setBusy(true);
     try {
-      const models = await testProviderKey(keyProvider, k);
+      const discovered = await testProviderKey(keyProvider, k);
+      const models = freeModels(keyProvider, discovered);
       await upd({ apiKeys: { ...keys, [keyProvider]: k } });
       if (models.length) {
         setModelLists((prev) => ({ ...prev, [keyProvider]: models }));
@@ -67,7 +70,7 @@ export default function Settings({ storage, onChange }) {
         }
       }
       setKey("");
-      toast(models.length ? "اتصال برقرار شد؛ مدل‌های قابل‌دسترسی دریافت و کلید ذخیره شد." : "کلید پذیرفته شد؛ فهرست مدل‌ها از سرویس دریافت نشد.");
+      toast(discovered.length ? "اتصال برقرار شد؛ فقط مدل‌های منتخب با سهمیهٔ رایگان محدود نمایش داده می‌شوند." : "کلید ذخیره شد؛ فهرست مدل‌ها دریافت نشد و مدل رایگان محدود پیش‌فرض استفاده می‌شود.");
     } catch (e) {
       toast("اتصال تأیید نشد و کلید ذخیره نشد: " + friendly(e));
     } finally { setBusy(false); }
@@ -80,15 +83,15 @@ export default function Settings({ storage, onChange }) {
   }
   async function changeAnalyzeProvider(provider) {
     let models = modelLists[provider] || [];
-    const providerKey = keys[provider] || (provider === "openai" ? s.apiKey : "");
+    const providerKey = keys[provider] || "";
     if (!models.length && providerKey) {
       try {
-        models = await testProviderKey(provider, providerKey);
+        models = freeModels(provider, await testProviderKey(provider, providerKey));
         if (models.length) setModelLists((prev) => ({ ...prev, [provider]: models }));
-      } catch (e) { /* Keep the selection usable; the connection test reports provider errors. */ }
+      } catch (e) { /* Keep the chosen free-tier default; the connection test shows provider errors. */ }
     }
-    const options = models.length ? models : PROVIDERS[provider].models;
-    await upd({ analyzeProvider: provider, analyzeModel: preferredModel(provider, options) });
+    models = freeModels(provider, models);
+    await upd({ analyzeProvider: provider, analyzeModel: preferredModel(provider, models) });
   }
   async function changeTranscribeProvider(provider) {
     await upd({ transcribeProvider: provider, transcribeModel: provider === "offline" ? "whisper-tiny-q5_1-fa" : modelForTranscription(provider) });
@@ -98,24 +101,21 @@ export default function Settings({ storage, onChange }) {
       <div className="card">
         <h4><Wifi size={14} style={{ verticalAlign: "-2px" }} /> سرویس تحلیل و امتیازدهی</h4>
         <select className="inp" value={s.analyzeProvider} onChange={(e) => changeAnalyzeProvider(e.target.value)}>
-          <option value="groq">Groq — دارای سهمیهٔ رایگان محدود</option>
-          <option value="gemini">Google Gemini — سهمیه بسته به مدل و منطقه</option>
-          <option value="mistral">Mistral — طرح رایگان محدود در صورت دسترسی</option>
-          <option value="openai">OpenAI — API معمولاً نیازمند اعتبار/پرداخت</option>
+          <option value="groq">Groq — GPT-OSS 20B / سهمیهٔ رایگان محدود</option>
+          <option value="gemini">Google Gemini — Flash Lite / سهمیهٔ رایگان محدود</option>
         </select>
         <div className="mut" style={{ margin: "8px 0 4px" }}>مدل تحلیل</div>
         <select className="inp" value={s.analyzeModel} onChange={(e) => upd({ analyzeModel: e.target.value })}>
           {(modelLists[s.analyzeProvider]?.length ? modelLists[s.analyzeProvider] : (PROVIDERS[s.analyzeProvider] || PROVIDERS.groq).models).map((m) => <option value={m} key={m}>{m}</option>)}
         </select>
-        <div className="mut" style={{ marginTop: 8, lineHeight: 1.8 }}>کلید سرویس تحلیل و کلید تبدیل صوت جدا هستند. سهمیهٔ رایگان ممکن است با کشور، حساب، مدل و زمان تغییر کند و تضمین‌شده نیست.</div>
+        <div className="mut" style={{ marginTop: 8, lineHeight: 1.8 }}>فقط مدل‌های دارای پلن رایگان محدود در فهرست دیده می‌شوند. سهمیه به حساب، منطقه و سیاست روز سرویس بستگی دارد و تضمین‌شده نیست. اگر برای حساب سرویس صورتحساب فعال است، محدودیت رایگان لزوماً سقف هزینه نیست؛ برای جلوگیری از هزینهٔ ناخواسته، صورتحساب و محدودیت حساب را هم در پنل همان سرویس بررسی کنید.</div>
       </div>
 
       <div className="card">
         <h4><Mic size={14} style={{ verticalAlign: "-2px" }} /> تبدیل گفتار به متن</h4>
         <select className="inp" value={s.transcribeProvider} onChange={(e) => changeTranscribeProvider(e.target.value)}>
           <option value="offline">کاملاً آفلاین — Whisper روی گوشی، بدون کلید API</option>
-          <option value="groq">Groq Whisper — آنلاین، کلید Groq</option>
-          <option value="openai">OpenAI Transcription — آنلاین، کلید OpenAI</option>
+          <option value="groq">Groq Whisper — آنلاین، سهمیهٔ رایگان محدود</option>
         </select>
         {s.transcribeProvider === "offline" && <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: "var(--bg)" }}>
           <div className="row" style={{ alignItems: "center", gap: 10 }}>
@@ -135,18 +135,14 @@ export default function Settings({ storage, onChange }) {
         {s.transcribeProvider !== "offline" && <div style={{ marginTop: 9 }}>
           <div className="mut" style={{ marginBottom: 4 }}>مدل صوت</div>
           <select className="inp" value={s.transcribeModel} onChange={(e) => upd({ transcribeModel: e.target.value })}>
-            {(s.transcribeProvider === "groq" ? [
+            {[
               ["whisper-large-v3", "Whisper Large v3 — اولویت دقت"],
               ["whisper-large-v3-turbo", "Whisper Large v3 Turbo — سریع‌تر"]
-            ] : [
-              ["gpt-4o-mini-transcribe", "GPT-4o mini Transcribe"],
-              ["gpt-4o-transcribe", "GPT-4o Transcribe"],
-              ["whisper-1", "Whisper"]
-            ]).map(([id, label]) => <option value={id} key={id}>{label}</option>)}
+            ].map(([id, label]) => <option value={id} key={id}>{label}</option>)}
           </select>
         </div>}
         <div className="mut" style={{ marginTop: 8, lineHeight: 1.8 }}>
-          در حالت آفلاین، گفتار پس از پایان ضبط با مدل Whisper همراه APK روی گوشی تبدیل می‌شود؛ دانلود جداگانه یا کلید API لازم نیست. گزینه‌های Groq و OpenAI همچنان تبدیل ابری هستند و به کلید API نیاز دارند.
+          در حالت آفلاین، گفتار پس از پایان ضبط با مدل Whisper همراه APK روی گوشی تبدیل می‌شود؛ دانلود جداگانه یا کلید API لازم نیست. گزینهٔ Groq آنلاین است و پس از پایان سهمیهٔ رایگان ممکن است خطای محدودیت سرویس بدهد.
         </div>
       </div>
 
@@ -185,7 +181,7 @@ export default function Settings({ storage, onChange }) {
           <button className="btn alt sm" onClick={async () => toast((await requestPersist()) ? "ذخیره‌سازی دائمی فعال شد" : "این دستگاه قبلاً دائمی کرده یا اجازه نداد")}>دائمی‌سازی</button></div>
         <div className="mut" style={{ marginTop: 10, lineHeight: 1.9 }}>برای ضبط طولانی روی گوشی‌های شیائومی/ردمی: تنظیمات ← برنامه‌ها ← یاور مصاحبه ← «صرفه‌جویی باتری» را روی «بدون محدودیت» بگذارید و برنامه را در لیست اخیر قفل کنید.</div>
       </div>
-      <div className="mut" style={{ textAlign: "center" }}>یاور مصاحبه — نسخهٔ ۹٫۰٫۰</div>
+      <div className="mut" style={{ textAlign: "center" }}>یاور مصاحبه — نسخهٔ ۱۱٫۰٫۰</div>
     </div>
   );
 }
