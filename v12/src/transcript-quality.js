@@ -15,7 +15,7 @@ function normalizeSpeaker(value) {
 
 export function sanitizeQaPairs(value) {
   if (!Array.isArray(value)) return [];
-  return value.slice(0, 12).filter((item) => item && typeof item === "object").map((item) => ({
+  return value.filter((item) => item && typeof item === "object").map((item) => ({
     question: String(item.question || "").trim().slice(0, 1200),
     answer: String(item.answer || "").trim().slice(0, 2200),
     questionSpeaker: normalizeSpeaker(item.questionSpeaker),
@@ -23,5 +23,5 @@ export function sanitizeQaPairs(value) {
     matchedQuestion: String(item.matchedQuestion || "").trim().slice(0, 600),
     confidence: ["بالا", "متوسط", "پایین"].includes(String(item.confidence || "")) ? String(item.confidence) : "پایین",
     evidence: String(item.evidence || "").trim().slice(0, 600)
-  })).filter((item) => item.question);
+  })).filter((item) => item.question).slice(0, 12);
 }
