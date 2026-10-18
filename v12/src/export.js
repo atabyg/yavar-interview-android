@@ -35,7 +35,8 @@ export function interviewExcel(iv) {
   const tr = [["متن خام مصاحبه"], ...String(iv.transcript || "").split(/\n+/).map((p) => [p])];
   const clean = [["متن بازبینی‌شده برای فرم‌ها"], ...String(a.cleanTranscript || "").split(/\n+/).map((p) => [p])];
   const qa = [["گویندهٔ سؤال", "پرسش ثبت‌شده", "گویندهٔ پاسخ", "پاسخ ثبت‌شده", "تطبیق با فرم", "اطمینان", "شاهد"], ...(a.qaPairs || []).map((q) => [q.questionSpeaker || "نامشخص", q.question || "", q.answerSpeaker || "نامشخص", q.answer || "", q.matchedQuestion || "", q.confidence || "پایین", q.evidence || ""])];
-  return toBlob(book([["خلاصه", sheet(info, [22, 80])], ["شایستگی‌ها", sheet(comps, [26, 14, 70])], ["قوت و ضعف", sheet(lists, [38, 38, 38, 38])], ["متن خام", sheet(tr, [120])], ["متن بازبینی‌شده", sheet(clean, [120])], ["پرسش و پاسخ", sheet(qa, [20, 60, 20, 70, 50, 12, 50])]]));
+  const warnings = [["ابهام‌ها و هشدارهای تشخیص"], ...(a.transcriptWarnings || []).map((warning) => [warning])];
+  return toBlob(book([["خلاصه", sheet(info, [22, 80])], ["شایستگی‌ها", sheet(comps, [26, 14, 70])], ["قوت و ضعف", sheet(lists, [38, 38, 38, 38])], ["متن خام", sheet(tr, [120])], ["متن بازبینی‌شده", sheet(clean, [120])], ["پرسش و پاسخ", sheet(qa, [20, 60, 20, 70, 50, 12, 50])], ["هشدارهای متن", sheet(warnings, [120])]]));
 }
 
 export function compareExcel(list) {
@@ -74,6 +75,9 @@ function blocks(iv, org) {
   if (Array.isArray(a.qaPairs) && a.qaPairs.length) {
     B.push(`<div class="pad"><h2>پرسش و پاسخ‌های استخراج‌شده</h2></div>`);
     for (const q of a.qaPairs) B.push(`<div class="pad"><b>پرسش (${esc(q.questionSpeaker || "نامشخص")}):</b> ${esc(q.question)}<br/><b>پاسخ (${esc(q.answerSpeaker || "نامشخص")}):</b> ${esc(q.answer || "پاسخ روشن در متن پیدا نشد.")}<div class="sm">تطبیق: ${esc(q.matchedQuestion || "-")} — اطمینان: ${esc(q.confidence || "پایین")}</div></div>`);
+  }
+  if (Array.isArray(a.transcriptWarnings) && a.transcriptWarnings.length) {
+    B.push(`<div class="pad"><h2>ابهام‌ها و هشدارهای تشخیص گفتار</h2><ul>${a.transcriptWarnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>`);
   }
   if (a.strengths.length) B.push(`<div class="pad"><h2>نقاط قوت</h2><ul>${li(a.strengths)}</ul></div>`);
   if (a.weaknesses.length) B.push(`<div class="pad"><h2>نقاط قابل بهبود</h2><ul>${li(a.weaknesses)}</ul></div>`);
