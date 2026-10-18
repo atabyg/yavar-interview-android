@@ -6,6 +6,7 @@ import { FileText, Copy, Share2, EyeOff, Eye, ChevronDown, ChevronUp, Sparkles }
 import { patchInterview } from "../db";
 import { groupByDay, buildDayText, dayLabel, dayFileName, timeLabel, AI_PROMPT } from "../daily";
 import { toast } from "../ui";
+import { shareExchangePack } from "../exchange-share";
 
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
@@ -28,7 +29,7 @@ async function shareFile(name, text) {
   await Share.share({ title: name, url: w.uri, dialogTitle: "ذخیره یا ارسال فایل متنی روزانه" });
 }
 
-export default function Daily({ items }) {
+export default function Daily({ items, onImportResult }) {
   const days = useMemo(() => groupByDay(items), [items]);
   const [openKey, setOpenKey] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -85,6 +86,11 @@ export default function Daily({ items }) {
   async function share(key, list) {
     try { await shareFile(dayFileName(key), buildDayText(key, list)); } catch (e) { toast("ذخیره یا اشتراک فایل ممکن نشد."); }
   }
+  async function shareExchange(key, list) {
+    const records = list.filter((i) => !i.dailyExcluded);
+    try { await shareExchangePack(records, key); toast("فایل‌های صوتی و پرامپت کدگذاری‌شده برای هوش مصنوعی آماده شد."); }
+    catch (e) { toast("ارسال بستهٔ صوتی/پرامپت ممکن نشد: " + String((e && e.message) || e)); }
+  }
 
   return (
     <div>
@@ -92,7 +98,7 @@ export default function Daily({ items }) {
         <div className="row"><Sparkles size={16} /><b className="grow">متن روزانه برای هوش مصنوعی</b></div>
         <div className="mut" style={{ marginTop: 6, lineHeight: 1.9 }}>برای هر روز شمسی یک فایل متنی ساخته می‌شود که همهٔ گفت‌وگوهای متنی‌شدهٔ همان روز را به تفکیک مددجو و شمارهٔ پرونده دارد. هر رکورد را می‌توانید از فایل حذف یا دوباره اضافه کنید (صدا و متن اصلی پاک نمی‌شود).</div>
         <div className="mut" style={{ marginTop: 7, lineHeight: 1.8 }}>{syncState}</div>
-        <button className="btn alt sm" style={{ marginTop: 8 }} onClick={async () => toast((await copyText(AI_PROMPT)) ? "پرامپت آمادهٔ هوش مصنوعی کپی شد." : "کپی ممکن نشد.")}><Copy size={14} /> کپی پرامپت پیشنهادی</button>
+        <div className="row" style={{ flexWrap: "wrap", gap: 8, marginTop: 8 }}><button className="btn alt sm" onClick={async () => toast((await copyText(AI_PROMPT)) ? "پرامپت آمادهٔ هوش مصنوعی کپی شد." : "کپی ممکن نشد.")}><Copy size={14} /> کپی پرامپت پیشنهادی</button>{onImportResult && <button className="btn sm" onClick={onImportResult}><FileText size={14} /> ثبت نتیجهٔ هوش مصنوعی بیرونی</button>}</div>
       </div>
       {days.length === 0 && <div className="card mut">هنوز مصاحبه‌ای ثبت نشده است.</div>}
       {days.map(({ key, items: list }) => {
@@ -108,7 +114,7 @@ export default function Daily({ items }) {
             </div>
             {open && <div style={{ marginTop: 10 }}>
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <button className="btn sm" onClick={() => share(key, list)}><Share2 size={14} /> ذخیره / ارسال فایل</button>
+                <button className="btn alt sm" onClick={() => share(key, list)}><Share2 size={14} /> ذخیره / ارسال متن روز</button><button className="btn sm" onClick={() => shareExchange(key, list)}><Share2 size={14} /> ارسال صوت + پرامپت کدگذاری‌شده</button>
                 <button className="btn alt sm" onClick={() => copy(key, list)}><Copy size={14} /> کپی</button>
                 <button className="btn alt sm" onClick={() => setPreview(preview === key ? null : key)}>پیش‌نمایش</button>
               </div>

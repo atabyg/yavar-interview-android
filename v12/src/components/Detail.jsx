@@ -6,21 +6,23 @@ import { saveFile } from "../native";
 import { getSettings } from "../settings";
 import { processInterview, reanalyze } from "../pipeline";
 import { ask, fa, scoreColor, size, toast } from "../ui";
+import AudioPlayer from "./AudioPlayer";
+import { shareExchangePack } from "../exchange-share";
+import { dayKey } from "../daily";
 
 const STEPS = [["ضبط", Mic], ["متن", FileText], ["تحلیل", Sparkles], ["گزارش", Check]];
 const stepIndex = (i) => (i.status === "done" ? 4 : i.status === "analyzing" || i.status === "transcribed" ? 2 : i.status === "transcribing" || i.status === "recorded" ? 1 : i.status === "error" ? (i.failedAt === "analyze" ? 2 : 1) : 0);
 
-export default function Detail({ iv, onBack }) {
-  const [url, setUrl] = useState(null);
+export default function Detail({ iv, onBack, onImportResult }) {
   const [segs, setSegs] = useState([]);
   const [pdf, setPdf] = useState(-1);
   const [full, setFull] = useState(false);
   const [f, setF] = useState({ candidate: iv.candidate, position: iv.position, title: iv.title });
 
   useEffect(() => {
-    let u = null, off = false;
-    getAudioSegments(iv.id).then((b) => { if (off) return; setSegs(b); if (b.length) { u = URL.createObjectURL(b[0]); setUrl(u); } });
-    return () => { off = true; if (u) URL.revokeObjectURL(u); };
+    let off = false;
+    getAudioSegments(iv.id).then((b) => { if (!off) setSegs(b); });
+    return () => { off = true; };
   }, [iv.id, iv.segs]);
 
   const a = iv.analysis;
@@ -33,6 +35,7 @@ export default function Detail({ iv, onBack }) {
     catch (e) { toast("ساخت PDF ناموفق بود."); } finally { setPdf(-1); }
   }
   async function doXlsx() { try { await saveFile(interviewExcel(iv), fileBase(iv) + ".xlsx"); } catch (e) { toast("ساخت Excel ناموفق بود."); } }
+  async function doExternalAI() { try { await shareExchangePack([iv], dayKey(iv.createdAt)); toast("فایل صوتی و پرامپت کدگذاری‌شده برای اشتراک‌گذاری آماده شد."); } catch (e) { toast("ساخت بستهٔ صوتی/پرامپت ناموفق بود: " + String((e && e.message) || e)); } }
   const ext = /mp4/.test(iv.mime) ? "m4a" : /ogg/.test(iv.mime) ? "ogg" : "webm";
 
   return (
@@ -124,10 +127,14 @@ export default function Detail({ iv, onBack }) {
           </div>
         )}
 
-        {url && (
-          <div className="card"><h4>فایل صوتی</h4><audio controls src={url} />
-            <div className="row" style={{ flexWrap: "wrap", marginTop: 8 }}>
-              {segs.map((b, k) => <button key={k} className="btn line sm" onClick={() => saveFile(b, `${fileBase(iv)}-${k + 1}.${ext}`)}><Share2 size={14} /> {segs.length > 1 ? "بخش " + fa(k + 1) : "ارسال صوت"}</button>)}
+        {segs.length > 0 && (
+          <div className="card">
+            <h4>پخش صوت و انتخاب زمان دلخواه</h4>
+            <AudioPlayer segs={segs} totalSec={iv.durationSec} />
+            <div className="row" style={{ flexWrap: "wrap", marginTop: 10 }}>
+              {segs.map((b, k) => <button key={k} className="btn line sm" onClick={() => saveFile(b, `${fileBase(iv)}-${k + 1}.${ext}`)}><Share2 size={14} /> {segs.length > 1 ? "ارسال بخش " + fa(k + 1) : "ارسال صوت"}</button>)}
+              <button className="btn sm" onClick={doExternalAI}><Share2 size={14} /> ارسال صوت + پرامپت کدگذاری‌شده</button>
+              <button className="btn alt sm" onClick={onImportResult}><FileText size={14} /> ثبت نتیجهٔ هوش مصنوعی بیرونی</button>
             </div>
           </div>
         )}

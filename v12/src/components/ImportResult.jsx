@@ -9,7 +9,7 @@ import { fileBase, interviewExcel, interviewPdf } from "../export";
 import { saveFiles } from "../native";
 
 // Register the coded text produced by an external AI: pick a txt/Word file, paste text, or arrive here via Android Share.
-export default function ImportResult({ items, initialText = "", initialName = "", initialError = "", onClose }) {
+export default function ImportResult({ items, initialText = "", initialName = "", initialError = "", initialBase64 = "", initialMime = "", onClose }) {
   const [text, setText] = useState(initialText);
   const [fileName, setFileName] = useState(initialName);
   const [rows, setRows] = useState([]);
@@ -30,7 +30,30 @@ export default function ImportResult({ items, initialText = "", initialName = ""
     setPicks({});
     setRows(parsed.map((r) => ({ ...r, match: matchRecord(r, items) })));
   }
-  useEffect(() => { if (initialText) analyse(initialText); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    let cancelled = false;
+    if (initialBase64 && initialName) {
+      setBusy("در حال خواندن فایل دریافتی از برنامهٔ دیگر…");
+      try {
+        const binary = atob(initialBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const mime = initialMime || (initialName.toLowerCase().endsWith(".docx") ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "text/plain");
+        const file = new File([bytes], initialName, { type: mime });
+        readFileText(file).then((value) => {
+          if (cancelled) return;
+          setText(value); setFileName(initialName); analyse(value);
+        }).catch((error) => {
+          if (!cancelled) setMessage("خواندن فایل اشتراک‌گذاری‌شده ممکن نشد: " + String((error && error.message) || error));
+        }).finally(() => { if (!cancelled) setBusy(""); });
+      } catch (error) {
+        setMessage("فایل دریافت شد اما قابل خواندن نیست: " + String((error && error.message) || error)); setBusy("");
+      }
+    } else if (initialText) {
+      setText(initialText); setFileName(initialName); analyse(initialText);
+    }
+    return () => { cancelled = true; };
+  }, [initialText, initialName, initialBase64, initialMime]);
 
   async function onFile(e) {
     const file = e.target.files && e.target.files[0];

@@ -39,6 +39,11 @@ jobs:
           npm test
           test -s dist/index.html
       - name: Add Android, icons, patch and sync
+        env:
+          YAVAR_KEYSTORE_B64: ${{ secrets.YAVAR_KEYSTORE_B64 }}
+          YAVAR_STORE_PASSWORD: ${{ secrets.YAVAR_STORE_PASSWORD }}
+          YAVAR_KEY_ALIAS: ${{ secrets.YAVAR_KEY_ALIAS }}
+          YAVAR_KEY_PASSWORD: ${{ secrets.YAVAR_KEY_PASSWORD }}
         run: |
           npx cap add android
           npx capacitor-assets generate --android
@@ -50,6 +55,11 @@ jobs:
           grep -Eq 'versionName "12.0.0"' android/app/build.gradle
       - name: Build debug APK
         working-directory: v12/android
+        env:
+          YAVAR_KEYSTORE_B64: ${{ secrets.YAVAR_KEYSTORE_B64 }}
+          YAVAR_STORE_PASSWORD: ${{ secrets.YAVAR_STORE_PASSWORD }}
+          YAVAR_KEY_ALIAS: ${{ secrets.YAVAR_KEY_ALIAS }}
+          YAVAR_KEY_PASSWORD: ${{ secrets.YAVAR_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
