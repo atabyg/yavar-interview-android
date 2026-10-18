@@ -49,7 +49,7 @@ export async function exchangeFiles(records, key) {
 
 export async function shareExchangePack(records, key) {
   const files = await exchangeFiles(records, key);
-  if (files.length < 2) throw new Error("فایل صوتی برای ارسال پیدا نشد.");
+  if (!files.some((file) => /\\.(?:wav|webm|m4a|ogg)$/i.test(file.name))) throw new Error("فایل صوتی برای ارسال پیدا نشد؛ متن تنها به‌جای صوت ارسال نشد.");
   return saveFiles(files);
 }
 

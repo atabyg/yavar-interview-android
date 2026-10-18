@@ -57,14 +57,34 @@ const css = `.rp{width:794px;box-sizing:border-box;background:#fff;color:#14284B
 .nt{font-size:12px;color:#566A7A;margin:-4px 0 6px 0;padding-right:160px}ul{margin:4px 0;padding-right:20px}li{margin:3px 0}.red li{color:#C0583A}.tx{white-space:pre-wrap;font-size:13px;line-height:2}.ft{font-size:11px;color:#566A7A;border-top:1px solid #BFD9DC;padding-top:8px}`;
 
 function blocks(iv, org) {
-  const a = iv.analysis || { competencies: [], strengths: [], weaknesses: [], redFlags: [], followUp: [], summary: "", overall: 0, verdict: "" };
+  const source = iv.analysis || {};
+  const a = {
+    competencies: Array.isArray(source.competencies) ? source.competencies : [],
+    strengths: Array.isArray(source.strengths) ? source.strengths : [],
+    weaknesses: Array.isArray(source.weaknesses) ? source.weaknesses : [],
+    redFlags: Array.isArray(source.redFlags) ? source.redFlags : [],
+    followUp: Array.isArray(source.followUp) ? source.followUp : [],
+    transcriptWarnings: Array.isArray(source.transcriptWarnings) ? source.transcriptWarnings : [],
+    qaPairs: Array.isArray(source.qaPairs) ? source.qaPairs : [],
+    formAnswers: Array.isArray(source.formAnswers) ? source.formAnswers : [],
+    summary: source.summary || "", overall: source.overall ?? null, verdict: source.verdict || "", ...source
+  };
   const li = (x) => x.map((t) => `<li>${esc(t)}</li>`).join("");
   const B = [];
-  B.push(`<div class="hd"><img src="${logo}"/><div><h1>گزارش مصاحبهٔ شغلی</h1><p>${esc(org)}</p></div></div>
-  <div class="pad"><div class="meta"><div><b>متقاضی:</b> ${esc(iv.candidate || "-")}</div><div><b>سمت:</b> ${esc(iv.position || "-")}</div><div><b>مصاحبه‌گر:</b> ${esc(iv.interviewer || "-")}</div><div><b>تاریخ:</b> ${fmtDate(iv.createdAt)} — ${fmtTime(iv.createdAt)}</div><div><b>مدت:</b> ${fmtDur(iv.durationSec)}</div></div></div>`);
-  B.push(`<div class="pad"><div class="score"><div class="ring">${a.overall}</div><div><div class="vd">${esc(a.verdict)}</div><div class="sm">امتیاز کل از ۱۰۰ — ارزیابی هوش مصنوعی (مدل ${esc(a.model || "")})</div></div></div></div>`);
-  B.push(`<div class="pad"><h2>خلاصه</h2><div>${esc(a.summary)}</div></div>`);
-  B.push(`<div class="pad"><h2>شایستگی‌ها</h2>${a.competencies.map((c) => `<div class="cr"><div class="n">${esc(c.name)}</div><div class="bar"><i style="width:${c.score * 10}%"></i></div><div class="s">${c.score}</div></div><div class="nt">${esc(c.note)}</div>`).join("")}</div>`);
+  B.push(`<div class="hd"><img src="${logo}"/><div><h1>${esc(iv.reportTitle || "گزارش مصاحبهٔ شغلی")}</h1><p>${esc(org)}</p></div></div>
+  <div class="pad"><div class="meta"><div><b>متقاضی:</b> ${esc(iv.candidate || "-")}</div><div><b>شمارهٔ پرونده:</b> ${esc(iv.caseNumber || "-")}</div><div><b>سمت:</b> ${esc(iv.position || "-")}</div><div><b>مصاحبه‌گر:</b> ${esc(iv.interviewer || "-")}</div><div><b>تاریخ:</b> ${fmtDate(iv.createdAt)} — ${fmtTime(iv.createdAt)}</div><div><b>مدت:</b> ${fmtDur(iv.durationSec)}</div></div></div>`);
+  if (iv.reportNote) B.push(`<div class="pad"><div class="sm">${esc(iv.reportNote)}</div></div>`);
+  if (a.overall !== null && a.overall !== undefined && a.overall !== "") {
+    B.push(`<div class="pad"><div class="score"><div class="ring">${esc(a.overall)}</div><div><div class="vd">${esc(a.verdict || "نتیجه تعیین نشده")}</div><div class="sm">امتیاز کل از ۱۰۰ — ارزیابی هوش مصنوعی (مدل ${esc(a.model || "")})</div></div></div></div>`);
+  }
+  if (a.summary) B.push(`<div class="pad"><h2>خلاصه</h2><div>${esc(a.summary)}</div></div>`);
+  if (Array.isArray(a.formAnswers) && a.formAnswers.length) {
+    B.push(`<div class="pad"><h2>پاسخ‌های فرم — ${esc(a.formCode || a.formId || "")}</h2></div>`);
+    for (const item of a.formAnswers) {
+      B.push(`<div class="pad"><b>${esc(item.code || "")} — ${esc(item.question || "")}</b><div>${esc(item.answered ? (item.answer || "پاسخ نامشخص") : "پاسخ ثبت نشده / EMPTY")}</div>${item.evidence ? `<div class="sm">شاهد: ${esc(item.evidence)}</div>` : ""}${item.confidence ? `<div class="sm">اطمینان: ${esc(item.confidence)}</div>` : ""}</div>`);
+    }
+  }
+  if (a.competencies.length) B.push(`<div class="pad"><h2>شایستگی‌ها</h2>${a.competencies.map((c) => `<div class="cr"><div class="n">${esc(c.name)}</div><div class="bar"><i style="width:${Number(c.score || 0) * 10}%"></i></div><div class="s">${esc(c.score ?? "—")}</div></div><div class="nt">${esc(c.note || "")}</div>`).join("")}</div>`);
   if (a.cleanTranscript) {
     const cleaned = String(a.cleanTranscript).split(/\\n+/).filter(Boolean);
     B.push(`<div class="pad"><h2>متن بازبینی‌شده برای فرم‌ها (پیشنهاد هوش مصنوعی)</h2></div>`);

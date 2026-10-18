@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { FileUp, CheckCircle2, AlertTriangle } from "lucide-react";
-import { parseResults, matchRecord, buildPatch } from "../exchange.js";
+import { parseResults, matchRecord, buildPatch, normalizeDigits } from "../exchange.js";
+import { dayKey } from "../daily";
 import { patchInterview } from "../db";
 import { readFileText } from "../docx";
 import { Sheet, toast, fa } from "../ui";
 import { getSettings, saveSettings } from "../settings";
 import { fileBase, interviewExcel, interviewPdf } from "../export";
+import { saveFile } from "../native";
 import { saveFiles } from "../native";
 
 // Register the coded text produced by an external AI: pick a txt/Word file, paste text, or arrive here via Android Share.
@@ -15,20 +17,42 @@ export default function ImportResult({ items, initialText = "", initialName = ""
   const [rows, setRows] = useState([]);
   const [picks, setPicks] = useState({});
   const [busy, setBusy] = useState("");
-  const [autoExport, setAutoExport] = useState(!!getSettings().autoExportAfterImport);
+  const [autoExport, setAutoExport] = useState(getSettings().autoExportAfterImport !== false);
+  const [plainTargetId, setPlainTargetId] = useState("");
   const [message, setMessage] = useState(initialError);
   const fileRef = useRef(null);
+
+  function detectPlainTarget(value) {
+    const raw = String(value || "");
+    const recordId = (raw.match(/^\\s*RECORD_ID\\s*[:：]\\s*([^\\r\\n]+)/im) || [])[1];
+    if (recordId) { const found = items.find((x) => x.id === recordId.trim()); if (found) return found.id; }
+    const caseNo = normalizeDigits((raw.match(/^\\s*CASE_NUMBER\\s*[:：]\\s*([0-9۰-۹٠-٩]{4,})/im) || [])[1] || "").trim();
+    const date = normalizeDigits((raw.match(/^\\s*DATE_JALALI\\s*[:：]\\s*([0-9۰-۹٠-٩]{4}\\/[0-9۰-۹٠-٩]{1,2}\\/[0-9۰-۹٠-٩]{1,2})/im) || [])[1] || "").split("/").map((v) => v.padStart(2, "0")).join("/");
+    if (caseNo) {
+      let matches = items.filter((x) => String(x.caseNumber || "") === caseNo);
+      if (date) {
+        const sameDay = matches.filter((x) => dayKey(x.createdAt) === date);
+        if (sameDay.length === 1) return sameDay[0].id;
+        if (sameDay.length > 1) matches = sameDay;
+      }
+      if (matches.length === 1) return matches[0].id;
+    }
+    return "";
+  }
 
   function analyse(value) {
     setMessage("");
     const parsed = parseResults(value).filter((r) => r.hasContent);
     if (!parsed.length) {
       setRows([]);
-      setMessage("نتیجهٔ کدگذاری‌شدهٔ معتبر پیدا نشد. متن باید با #YAVAR_RESULT v1 شروع شود و پاسخ‌ها با کدهایی مثل Q12-01 آمده باشند (قالب خالی پرامپت هم پذیرفته نمی‌شود).");
+      setPlainTargetId(detectPlainTarget(value));
+      setMessage("بلوک نتیجهٔ کدگذاری‌شده پیدا نشد. می‌توانید همین متن را بدون اتصال اینترنت به PDF تبدیل کنید یا آن را به یک پرونده ثبت کنید. برای پر شدن خودکار خانه‌های فرم، خروجی هوش مصنوعی باید کدهای Q5-01 / Q12-01 / Q24-01 و بلوک #YAVAR_RESULT v1 داشته باشد؛ یاور هیچ پاسخ یا امتیازی را حدس نمی‌زند.");
       return;
     }
     setPicks({});
     setRows(parsed.map((r) => ({ ...r, match: matchRecord(r, items) })));
+    const firstMatch = parsed.map((r) => matchRecord(r, items)).find((m) => m.record);
+    if (firstMatch && firstMatch.record) setPlainTargetId(firstMatch.record.id);
   }
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +125,65 @@ export default function ImportResult({ items, initialText = "", initialName = ""
   }
 
   const ready = rows.some((r, i) => targetOf(r, i));
+  const plainTarget = items.find((x) => x.id === plainTargetId) || null;
+
+  async function createPlainPdf({ saveToCase = false } = {}) {
+    const raw = text.trim();
+    if (!raw) { toast("ابتدا متن را بچسبانید یا فایل متنی انتخاب کنید."); return; }
+    if (saveToCase && !plainTarget) { toast("برای ثبت متن، پروندهٔ مقصد را انتخاب کنید."); return; }
+    setBusy(saveToCase ? "در حال ثبت متن و ساخت PDF آفلاین…" : "در حال ساخت PDF آفلاین از متن…");
+    try {
+      let sourceRecord = plainTarget;
+      if (saveToCase && sourceRecord) {
+        const history = [...(Array.isArray(sourceRecord.transcriptHistory) ? sourceRecord.transcriptHistory : [])];
+        const old = String(sourceRecord.transcript || "").trim();
+        if (old && old !== raw) history.unshift({ transcript: old, savedAt: Date.now(), provider: sourceRecord.transcribeProviderUsed || "متن قبلی" });
+        const patch = { transcript: raw, transcriptHistory: history.slice(0, 5), transcribeProviderUsed: "external",
+          analysis: null, status: "transcribed", step: "", failedAt: null, error: "" };
+        const updated = await patchInterview(sourceRecord.id, patch);
+        sourceRecord = updated || { ...sourceRecord, ...patch };
+      }
+      const metaCase = (raw.match(/^\\s*CASE_NUMBER\\s*[:：]\\s*([0-9۰-۹٠-٩]+)/im) || [])[1];
+      const metaName = (raw.match(/^\\s*CLIENT_NAME\\s*[:：]\\s*([^\\r\\n]+)/im) || [])[1];
+      const pdfRecord = {
+        ...(sourceRecord || {}),
+        id: sourceRecord ? sourceRecord.id : "external-text-" + Date.now(),
+        candidate: (sourceRecord && sourceRecord.candidate) || (metaName && metaName.trim()) || "متن واردشده",
+        caseNumber: (sourceRecord && sourceRecord.caseNumber) || (metaCase ? normalizeDigits(metaCase) : ""),
+        position: (sourceRecord && sourceRecord.position) || "",
+        interviewer: (sourceRecord && sourceRecord.interviewer) || getSettings().interviewer || "",
+        createdAt: (sourceRecord && sourceRecord.createdAt) || Date.now(),
+        durationSec: (sourceRecord && sourceRecord.durationSec) || 0,
+        transcript: raw, analysis: null,
+        reportTitle: sourceRecord ? "گزارش متن واردشده به پرونده" : "گزارش آفلاین متن ورودی",
+        reportNote: "این PDF به‌صورت محلی و بدون فراخوانی API ساخته شده است. متن اصلی عیناً حفظ شده است. چون متن ورودی در قالب ساختاریافتهٔ #YAVAR_RESULT v1 نبود، هیچ سؤال، پاسخ، نمره یا نتیجه‌ای از روی حدس پر نشده است؛ برای تکمیل خودکار فرم، نتیجهٔ کدگذاری‌شده را از هوش مصنوعی وارد کنید."
+      };
+      const blob = await interviewPdf(pdfRecord, getSettings().org, () => {});
+      await saveFile(blob, fileBase(pdfRecord) + "-متن-ورودی.pdf");
+      toast(saveToCase ? "متن در پرونده ثبت و PDF آفلاین ساخته شد." : "PDF آفلاین متن آماده شد.");
+      if (saveToCase) onClose();
+    } catch (error) {
+      toast("ساخت PDF یا ثبت متن ناموفق بود: " + String((error && error.message) || error));
+    } finally { setBusy(""); }
+  }
+
+  async function createFormPdfs() {
+    const jobs = rows.map((r, i) => ({ r, rec: targetOf(r, i) })).filter((j) => j.rec);
+    if (!jobs.length) { toast("ابتدا برای نتایج، پروندهٔ درست را مشخص کنید."); return; }
+    setBusy("در حال ساخت PDF فرم‌ها به‌صورت آفلاین…");
+    try {
+      const out = [];
+      for (const { r, rec } of jobs) {
+        const patch = buildPatch(rec, r);
+        const iv = { ...rec, ...patch, transcript: rec.transcript || r.transcript || "" };
+        out.push({ blob: await interviewPdf(iv, getSettings().org, () => {}), name: fileBase(iv) + "-فرم.pdf" });
+      }
+      await saveFiles(out);
+      toast("PDF فرم‌های کدگذاری‌شده ساخته شد؛ اطلاعات به پرونده ثبت نشد.");
+    } catch (error) {
+      toast("ساخت PDF فرم ممکن نشد: " + String((error && error.message) || error));
+    } finally { setBusy(""); }
+  }
   return (
     <Sheet title="ثبت نتیجهٔ هوش مصنوعی بیرونی" onClose={busy ? () => {} : onClose}>
       <div style={{ maxHeight: "72vh", overflowY: "auto" }}>
@@ -134,10 +217,28 @@ export default function ImportResult({ items, initialText = "", initialName = ""
             </div>
           );
         })}
-        {rows.length > 0 && <label className="row" style={{ gap: 8, margin: "10px 0", fontSize: 13 }}>
-          <input type="checkbox" checked={autoExport} onChange={(e) => setAutoExport(e.target.checked)} />
-          <span>پس از ثبت، فایل PDF و Excel هر پرونده خودکار ساخته و برای ذخیره/ارسال باز شود</span>
-        </label>}
+        {rows.length > 0 && <>
+          <button className="btn alt full" disabled={!!busy} style={{ marginTop: 10 }} onClick={createFormPdfs}><FileUp size={14} /> ساخت PDF فرم آفلاین (بدون ثبت در پرونده)</button>
+          <label className="row" style={{ gap: 8, margin: "10px 0", fontSize: 13 }}>
+            <input type="checkbox" checked={autoExport} onChange={(e) => setAutoExport(e.target.checked)} />
+            <span>پس از ثبت، PDF فرم و Excel هر پرونده به‌صورت خودکار ساخته شود (آفلاین)</span>
+          </label>
+        </>}
+        {!rows.length && text.trim() && <>
+          <div className="card" style={{ marginTop: 10 }}>
+            <b>خروجی PDF آفلاین از متن عادی</b>
+            <div className="mut" style={{ marginTop: 5, lineHeight: 1.8 }}>ساخت PDF، ثبت متن و نگهداری نسخهٔ قبلی در گوشی انجام می‌شود و به اینترنت یا API نیاز ندارد. متن عادی به‌تنهایی پاسخ‌های فرم را پر نمی‌کند؛ برای آن از هوش مصنوعی بخواهید بلوک کدگذاری‌شدهٔ قابل‌خواندن را طبق پرامپت پیوست تولید کند.</div>
+            <label style={{ display: "block", fontSize: 13, marginTop: 8 }}>پروندهٔ مقصد برای ثبت متن</label>
+            <select className="inp" value={plainTargetId} onChange={(e) => setPlainTargetId(e.target.value)} style={{ marginTop: 5 }}>
+              <option value="">فقط PDF؛ پرونده‌ای تغییر نکند</option>
+              {items.map((x) => <option key={x.id} value={x.id}>{(x.candidate || x.title || "بدون نام") + " — " + (x.caseNumber || "بدون شماره")}</option>)}
+            </select>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              <button className="btn alt sm" disabled={!!busy} onClick={() => createPlainPdf()}><FileUp size={14} /> فقط ساخت PDF آفلاین</button>
+              <button className="btn sm" disabled={!!busy || !plainTargetId} onClick={() => createPlainPdf({ saveToCase: true })}>ثبت متن در پرونده + PDF</button>
+            </div>
+          </div>
+        </>}
         {busy && <div className="mut" style={{ margin: "8px 0" }}>{busy}</div>}
       </div>
       <div className="row" style={{ marginTop: 10 }}>
