@@ -94,7 +94,11 @@ async function openAiCompatible(provider, key, model, user) {
     headers["HTTP-Referer"] = "https://github.com/atabyg/yavar-interview-android";
     headers["X-Title"] = "Yavar Interview";
   }
-  const baseBody = { model, temperature: 0.2, messages: [{ role: "system", content: SYSTEM }, { role: "user", content: user }] };
+  const baseBody = { model, messages: [{ role: "system", content: SYSTEM }, { role: "user", content: user }] };
+  // OpenRouter may route to different free models with different sampling constraints.
+  if (provider !== "openrouter") baseBody.temperature = 0.2;
+  // Cerebras documents low-temperature determinism for GLM 4.7 only when reasoning is disabled.
+  if (provider === "cerebras" && model === "zai-glm-4.7") baseBody.reasoning_effort = "none";
   let r;
   try {
     r = await request(url, { method: "POST", headers, body: JSON.stringify({ ...baseBody, response_format: { type: "json_object" } }) });
