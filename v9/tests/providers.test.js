@@ -209,7 +209,7 @@ test("unsupported JSON mode retries once without response_format before validati
     const body = JSON.parse(init.body);
     requestBodies.push(body);
     if (body.response_format) {
-      return new Response(JSON.stringify({ error: { message: "response_format json_object is not supported" } }), {
+      return new Response(JSON.stringify({ error: "JSON mode is not supported for this model" }), {
         status: 400, headers: { "Content-Type": "application/json" }
       });
     }
