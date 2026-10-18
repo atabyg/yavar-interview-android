@@ -2,9 +2,38 @@
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 const KEY = "yavar8.settings";
+
+// Only models/providers with a documented free or limited-free path are offered here.
+// API keys are user-owned; never bundle a shared key in this public app.
+export const ANALYSIS_PROVIDERS = {
+  groq: {
+    label: "Groq",
+    models: ["openai/gpt-oss-20b", "openai/gpt-oss-120b"],
+    defaultModel: "openai/gpt-oss-20b",
+    keyUrl: "https://console.groq.com/keys"
+  },
+  gemini: {
+    label: "Google Gemini",
+    models: ["gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite"],
+    defaultModel: "gemini-3.7-flash",
+    keyUrl: "https://aistudio.google.com/apikey"
+  },
+  cerebras: {
+    label: "Cerebras",
+    models: ["zai-glm-4.7", "gpt-oss-120b", "llama3.1-8b"],
+    defaultModel: "zai-glm-4.7",
+    keyUrl: "https://cloud.cerebras.ai/platform"
+  },
+  openrouter: {
+    label: "OpenRouter — مسیریاب مدل‌های رایگان",
+    models: ["openrouter/free"],
+    defaultModel: "openrouter/free",
+    keyUrl: "https://openrouter.ai/settings/keys"
+  }
+};
 export const DEFAULTS = {
   apiKey: "",
-  apiKeys: { openai: "", groq: "", gemini: "", mistral: "" },
+  apiKeys: { openai: "", groq: "", gemini: "", mistral: "", cerebras: "", openrouter: "" },
   transcribeProvider: "offline", transcribeModel: "whisper-large-v3",
   analyzeProvider: "groq", analyzeModel: "openai/gpt-oss-20b",
   questionSet: "critical12", autoProcess: false, autoProcessConsentVersion: 1,
@@ -23,15 +52,10 @@ export async function loadSettings() {
     obj.transcribeModel = "gpt-4o-mini-transcribe";
     if (!obj.transcribeProvider || obj.transcribeProvider === "offline") obj.transcribeProvider = "openai";
   }
-  // v11: keep old keys/data for compatibility, but do not default to paid or retired models.
-  if (!["groq", "gemini"].includes(obj.analyzeProvider)) obj.analyzeProvider = "groq";
-  const freeAnalysisModels = {
-    groq: ["openai/gpt-oss-20b", "openai/gpt-oss-120b"],
-    gemini: ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
-  };
-  if (!freeAnalysisModels[obj.analyzeProvider].includes(obj.analyzeModel)) {
-    obj.analyzeModel = obj.analyzeProvider === "groq" ? "openai/gpt-oss-20b" : "gemini-3.1-flash-lite";
-  }
+  // v11: keep old keys/data for compatibility, but default to documented limited-free models.
+  if (!ANALYSIS_PROVIDERS[obj.analyzeProvider]) obj.analyzeProvider = "groq";
+  const currentProvider = ANALYSIS_PROVIDERS[obj.analyzeProvider];
+  if (!currentProvider.models.includes(obj.analyzeModel)) obj.analyzeModel = currentProvider.defaultModel;
   if (!["offline", "groq"].includes(obj.transcribeProvider)) obj.transcribeProvider = "offline";
   if (obj.transcribeProvider === "offline") obj.transcribeModel = "whisper-tiny-q5_1-fa";
   else if (!["whisper-large-v3", "whisper-large-v3-turbo"].includes(obj.transcribeModel)) obj.transcribeModel = "whisper-large-v3";
