@@ -23,29 +23,16 @@ export default function Settings({ storage, onChange }) {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [modelLists, setModelLists] = useState({});
-  const [offlineModel, setOfflineModel] = useState({ downloaded: false, sizeBytes: 0 });
-  const [modelBusy, setModelBusy] = useState(false);
-  const [modelProgress, setModelProgress] = useState(0);
-  const [modelError, setModelError] = useState("");
+  const [offlineModel, setOfflineModel] = useState({ downloaded: false, bundled: true, sizeBytes: 0, loading: true });
   useEffect(() => {
     setS(getSettings());
     let alive = true;
-    let progressHandle = null;
     OfflineWhisper.modelStatus().then((status) => {
-      if (alive) setOfflineModel(status || { downloaded: false, sizeBytes: 0 });
-    }).catch(() => {
-      if (alive) setOfflineModel({ downloaded: false, sizeBytes: 0, unavailable: true });
+      if (alive) setOfflineModel({ ...(status || {}), loading: false });
+    }).catch((error) => {
+      if (alive) setOfflineModel({ downloaded: false, bundled: true, sizeBytes: 0, loading: false, unavailable: true, error: String((error && error.message) || error || "") });
     });
-    OfflineWhisper.addListener("modelDownloadProgress", (event) => {
-      if (alive) setModelProgress(Math.max(0, Math.min(100, Number(event && event.progress) || 0)));
-    }).then((handle) => {
-      if (alive) progressHandle = handle;
-      else handle.remove();
-    }).catch(() => {});
-    return () => {
-      alive = false;
-      if (progressHandle) progressHandle.remove();
-    };
+    return () => { alive = false; };
   }, []);
   const upd = async (patch) => {
     const n = await saveSettings(patch);
@@ -106,24 +93,6 @@ export default function Settings({ storage, onChange }) {
   async function changeTranscribeProvider(provider) {
     await upd({ transcribeProvider: provider, transcribeModel: provider === "offline" ? "whisper-tiny-q5_1-fa" : modelForTranscription(provider) });
   }
-  async function downloadOfflineModel() {
-    setModelBusy(true);
-    setModelProgress(0);
-    setModelError("");
-    try {
-      const status = await OfflineWhisper.downloadModel();
-      setOfflineModel(status || { downloaded: true });
-      setModelProgress(100);
-      toast("مدل گفتار آفلاین دانلود و بررسی شد؛ تبدیل صوت از این پس بدون کلید API انجام می‌شود.");
-    } catch (e) {
-      const message = String((e && e.message) || e || "خطای ناشناخته");
-      setModelError(message);
-      toast("دانلود مدل آفلاین انجام نشد؛ اتصال اینترنت را بررسی کنید.");
-    } finally {
-      setModelBusy(false);
-    }
-  }
-
   return (
     <div>
       <div className="card">
@@ -153,19 +122,14 @@ export default function Settings({ storage, onChange }) {
             <div className="grow">
               <b style={{ fontSize: 13 }}>مدل تبدیل گفتار فارسی آفلاین</b>
               <div className="mut" style={{ marginTop: 4, lineHeight: 1.8 }}>
-                {offlineModel.downloaded ? "مدل آماده است؛ تبدیل صوت بدون اینترنت و بدون کلید API انجام می‌شود." : "مدل هنوز دانلود نشده است؛ دانلود اولیه حدود ۳۲ مگابایت اینترنت مصرف می‌کند."}
+                {offlineModel.loading ? "در حال آماده‌سازی مدل همراه برنامه…" : offlineModel.downloaded ? "مدل داخل برنامه نصب شده و آماده است؛ برای شروع نیازی به اینترنت یا دانلود جداگانه نیست." : "مدل همراه برنامه آماده نشد؛ برنامه را حذف و نسخهٔ کامل جدید را دوباره نصب کنید."}
               </div>
             </div>
-            <button className="btn alt sm" disabled={modelBusy || offlineModel.downloaded} onClick={downloadOfflineModel}>
-              {offlineModel.downloaded ? "آماده" : modelBusy ? "در حال دانلود…" : "دانلود مدل"}
-            </button>
+            <span className={"pill " + (offlineModel.downloaded ? "ok" : offlineModel.loading ? "" : "bad")}>{offlineModel.downloaded ? "آماده" : offlineModel.loading ? "آماده‌سازی" : "خطا"}</span>
           </div>
-          {(modelBusy || modelProgress > 0) && <div style={{ height: 6, borderRadius: 4, marginTop: 10, background: "var(--line)", overflow: "hidden" }}>
-            <div style={{ height: 6, width: modelProgress + "%", background: "var(--teal)", transition: "width .2s" }} />
-          </div>}
-          {modelError && <div style={{ color: "var(--terra)", fontSize: 12, marginTop: 8, lineHeight: 1.7 }}>{modelError}</div>}
+          {offlineModel.unavailable && <div style={{ color: "var(--terra)", fontSize: 12, marginTop: 8, lineHeight: 1.7 }}>{offlineModel.error || "مدل داخلی پیدا نشد."}</div>}
           <div className="mut" style={{ fontSize: 12, lineHeight: 1.8, marginTop: 8 }}>
-            این مدل چندزبانه و سبک است؛ پس از دانلود روی دستگاه اجرا می‌شود و فایل صوتی برای تبدیل به هیچ سرویس بیرونی ارسال نمی‌شود. دقت آن به کیفیت ضبط، لهجه و توان گوشی بستگی دارد.
+            مدل چندزبانهٔ Whisper داخل فایل نصب قرار دارد. پس از نصب، تبدیل گفتار روی خود گوشی انجام می‌شود؛ فایل صوتی ارسال نمی‌شود و برای تبدیل گفتار هیچ کلید API لازم نیست.
           </div>
         </div>}
         {s.transcribeProvider !== "offline" && <div style={{ marginTop: 9 }}>
@@ -182,7 +146,7 @@ export default function Settings({ storage, onChange }) {
           </select>
         </div>}
         <div className="mut" style={{ marginTop: 8, lineHeight: 1.8 }}>
-          در حالت آفلاین، گفتار پس از پایان ضبط با مدل Whisper روی گوشی تبدیل می‌شود؛ فایل صوتی برای تبدیل بارگذاری نمی‌شود. مدل را پیش از اولین استفاده، یک بار در همین صفحه دانلود کنید. گزینه‌های Groq و OpenAI همچنان تبدیل ابری هستند و به کلید API نیاز دارند.
+          در حالت آفلاین، گفتار پس از پایان ضبط با مدل Whisper همراه APK روی گوشی تبدیل می‌شود؛ دانلود جداگانه یا کلید API لازم نیست. گزینه‌های Groq و OpenAI همچنان تبدیل ابری هستند و به کلید API نیاز دارند.
         </div>
       </div>
 
