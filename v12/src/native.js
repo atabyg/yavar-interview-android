@@ -30,3 +30,31 @@ export async function saveFile(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 30000);
   return true;
 }
+
+
+// Save/share a collection of files together for the external-AI prompt + audio hand-off.
+export async function saveFiles(files) {
+  if (!Array.isArray(files) || files.length === 0) throw new Error("فایلی برای ذخیره یا ارسال وجود ندارد.");
+  if (Capacitor.isNativePlatform()) {
+    const urls = [];
+    for (const file of files) {
+      const data = await toBase64(file.blob);
+      const path = String(file.name || "yavar-export.txt").replace(/[\\/:*?"<>|]+/g, "-");
+      const saved = await Filesystem.writeFile({ path, data, directory: Directory.Cache });
+      urls.push(saved.uri);
+    }
+    await Share.share({
+      title: files.length === 1 ? files[0].name : "بستهٔ تبادل یاور (" + files.length + " فایل)",
+      files: urls, dialogTitle: "ذخیره یا ارسال فایل‌ها"
+    });
+    return true;
+  }
+  for (const file of files) {
+    const url = URL.createObjectURL(file.blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = file.name || "yavar-export.txt";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+  return true;
+}
