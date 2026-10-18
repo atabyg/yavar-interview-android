@@ -1,0 +1,71 @@
+name: Build Android APK (v9)
+
+on:
+  push:
+    paths:
+      - 'v9/**'
+      - '.github/workflows/build-apk-v9.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: v9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Restore logo and generate icons
+        run: |
+          mkdir -p src/assets assets
+          if [ ! -f src/assets/logo.png ]; then cat assets/logo/p?.txt | base64 -d > src/assets/logo.png; fi
+          pip install pillow
+          python3 -c "from PIL import Image; im=Image.open('src/assets/logo.png'); im.load(); print('logo ok', im.size)"
+          python3 make-icons.py
+      - name: Install and build web app
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          test -s dist/index.html
+      - name: Add Android, icons, patch and sync
+        run: |
+          npx cap add android
+          npx capacitor-assets generate --android
+          bash patch-android.sh
+          npx cap sync android
+      - name: Build debug APK
+        working-directory: v9/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+      - name: Verify APK
+        working-directory: v9
+        run: |
+          test -s android/app/build/outputs/apk/debug/app-debug.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk yavar-interview-v9.apk
+          sha256sum yavar-interview-v9.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yavar-interview-v9-apk
+          path: v9/yavar-interview-v9.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish APK release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v9-build-${{ github.run_number }}
+          name: Yavar Interview v9 (build ${{ github.run_number }})
+          files: v9/yavar-interview-v9.apk
+          fail_on_unmatched_files: true
