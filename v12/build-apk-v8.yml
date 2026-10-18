@@ -1,0 +1,64 @@
+# Move this file to .github/workflows/build-apk-v8.yml (GitHub web: open file -> pencil -> change the path in the name box -> Commit).
+name: Build Android APK (v8)
+
+on:
+  push:
+    paths: ['v8/**', '.github/workflows/build-apk-v8.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: v8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+
+      - name: Restore logo and generate icons
+        run: |
+          mkdir -p src/assets assets
+          # If you upload a real src/assets/logo.png it is used as-is; otherwise rebuild it from the text chunks.
+          if [ ! -f src/assets/logo.png ]; then cat assets/logo/p?.txt | base64 -d > src/assets/logo.png; fi
+          pip install pillow
+          python3 -c "from PIL import Image; im=Image.open('src/assets/logo.png'); im.load(); print('logo ok', im.size)"
+          python3 make-icons.py
+
+      - name: Install and build web app
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          test -f dist/index.html
+
+      - name: Add Android, icons, patch
+        run: |
+          npx cap add android
+          npx capacitor-assets generate --android
+          bash patch-android.sh
+          npx cap sync android
+
+      - name: Build debug APK
+        working-directory: v8/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Collect APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk yavar-interview-v8.apk
+
+      - uses: actions/upload-artifact@v4
+        with: { name: yavar-interview-v8-apk, path: v8/yavar-interview-v8.apk }
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v8-build-${{ github.run_number }}
+          name: Yavar Interview v8 (build ${{ github.run_number }})
+          files: v8/yavar-interview-v8.apk
