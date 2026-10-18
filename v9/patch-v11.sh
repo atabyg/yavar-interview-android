@@ -33,22 +33,33 @@ grep -q 'registerPlugin(OfflineWhisperPlugin.class);' "$MAIN" || { echo "::error
 sed -i -E "s/versionCode [0-9]+/versionCode 11/; s/versionName ['\"][^'\"]*['\"]/versionName \"11.0.0\"/" "$GRADLE"
 grep -Eq 'versionCode 11' "$GRADLE" || { echo "::error::versionCode 11 not set"; exit 1; }
 
-# 3) Stable signing key (same key on every build -> update-over-old-install works without signature conflict).
-base64 -d yavar-release.jks.b64 > android/app/yavar-release.jks
-python3 - "$GRADLE" <<'PY'
+# 3) Optional stable signing from GitHub Actions Secrets; do not store keystore material in the public repository.
+if [[ -n "${YAVAR_KEYSTORE_B64:-}" && -n "${YAVAR_STORE_PASSWORD:-}" && -n "${YAVAR_KEY_ALIAS:-}" && -n "${YAVAR_KEY_PASSWORD:-}" ]]; then
+  printf '%s' "$YAVAR_KEYSTORE_B64" | base64 -d > android/app/yavar-release.jks
+  test -s android/app/yavar-release.jks
+  python3 - "$GRADLE" <<'PY'
 import re, sys
 p = sys.argv[1]
-t = open(p, encoding='utf-8').read()
-if 'yavar-release.jks' not in t:
-    sign = ('    signingConfigs {\n        yavar {\n            storeFile file("yavar-release.jks")\n'
-            '            storePassword "yavar-debug-11"\n            keyAlias "yavar"\n            keyPassword "yavar-debug-11"\n        }\n    }\n')
+t = open(p, encoding="utf-8").read()
+if 'signingConfigs.yavar' not in t:
+    sign = '''    signingConfigs {
+        yavar {
+            storeFile file("yavar-release.jks")
+            storePassword System.getenv("YAVAR_STORE_PASSWORD")
+            keyAlias System.getenv("YAVAR_KEY_ALIAS")
+            keyPassword System.getenv("YAVAR_KEY_PASSWORD")
+        }
+    }
+'''
     t = re.sub(r'(?m)^android\s*\{', lambda m: m.group(0) + '\n' + sign, t, count=1)
-    # use it for debug and release builds
-    t = re.sub(r'(?m)^(\s*)buildTypes\s*\{', lambda m: m.group(0) + '\n' + m.group(1) + '    debug { signingConfig signingConfigs.yavar }', t, count=1)
-    t = re.sub(r'(?m)^(\s*)release\s*\{', lambda m: m.group(0) + '\n' + m.group(1) + '    signingConfig signingConfigs.yavar', t, count=1)
-open(p, 'w', encoding='utf-8').write(t)
+    if re.search(r'(?m)^\s*debug\s*\{', t) is None:
+        t = re.sub(r'(?m)^(\s*)buildTypes\s*\{', lambda m: m.group(0) + '\n' + m.group(1) + '    debug { signingConfig signingConfigs.yavar }', t, count=1)
+open(p, 'w', encoding="utf-8").write(t)
 PY
-grep -q 'signingConfigs.yavar' "$GRADLE" || { echo "::error::signing config not applied"; exit 1; }
+  grep -q 'signingConfigs.yavar' "$GRADLE" || { echo "::error::signing config not applied"; exit 1; }
+else
+  echo "::warning::Repository signing secrets absent; using default Android debug signing."
+fi
 
 # 4) Clean uninstall/update: no Android auto-backup, so removing the app wipes all data and reinstall starts clean.
 sed -i 's#android:allowBackup="true"#android:allowBackup="false"#' "$MANIFEST"
