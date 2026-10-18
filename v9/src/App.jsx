@@ -62,7 +62,7 @@ export default function App() {
       <div className="main">
         <div style={{ display: tab === "rec" ? "block" : "none" }}><Record folders={folders} items={items} onOpen={(id) => { setOpen(id); }} /></div>
         {tab === "arc" && <Archive items={items} folders={folders} storage={storage} onOpen={setOpen} />}
-        {tab === "day" && <Daily items={items} />}
+        <div style={{ display: tab === "day" ? "block" : "none" }}><Daily items={items} /></div>
         {tab === "set" && <Settings storage={storage} onChange={reload} />}
       </div>
       <div className="tabs">{T.map(([k, n, Ic]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}><Ic size={22} />{n}</button>)}</div>
