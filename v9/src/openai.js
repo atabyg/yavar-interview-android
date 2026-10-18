@@ -26,7 +26,7 @@ async function request(url, init, options = {}) {
       clearTimeout(timer);
       if (r.ok) return r;
       let message = "";
-      try { const body = await r.json(); message = body.error && (body.error.message || body.error.status) || body.message || ""; } catch (e) {}
+      try { const body = await r.json(); message = (typeof body.error === "string" ? body.error : body.error && (body.error.message || body.error.status)) || body.message || ""; } catch (e) {}
       const err = new ApiError(message || ("HTTP " + r.status), r.status);
       if (![408, 429, 500, 502, 503, 504].includes(r.status)) throw err;
       last = err;
@@ -105,7 +105,7 @@ async function openAiCompatible(provider, key, model, user) {
     r = await request(url, { method: "POST", headers, body: JSON.stringify({ ...baseBody, response_format: { type: "json_object" } }) });
   } catch (e) {
     // Some OpenAI-compatible models do not support JSON mode; retry without that optional parameter.
-    if (e.status !== 400 || !/response.?format|json.?object|json.?mode|structured output|unsupported.*parameter/i.test(String(e.message))) throw e;
+    if (e.status !== 400 || !/response.?format|json.?object|json.?mode|json.*(?:not supported|unsupported)|(?:not supported|unsupported).*json|structured output|unsupported.*parameter/i.test(String(e.message))) throw e;
     r = await request(url, { method: "POST", headers, body: JSON.stringify(baseBody) });
   }
   const d = await r.json();
