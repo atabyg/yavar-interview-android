@@ -68,19 +68,54 @@ public class OfflineWhisperPlugin extends Plugin {
         mainHandler.post(() -> notifyListeners("modelDownloadProgress", data));
     }
 
+    private File ensureBundledModel() throws IOException {
+        File target = modelFile();
+        if (isValidModel(target)) return target;
+
+        File temp = new File(target.getParentFile(), MODEL_NAME + ".bundled");
+        if (temp.exists()) temp.delete();
+        try (BufferedInputStream input = new BufferedInputStream(getContext().getAssets().open("models/" + MODEL_NAME));
+             BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(temp))) {
+            byte[] buffer = new byte[65536];
+            int count;
+            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+        }
+        if (!isValidModel(temp)) {
+            temp.delete();
+            throw new IOException("مدل گفتار داخل APK ناقص است؛ برنامه را دوباره نصب کنید.");
+        }
+        if (target.exists() && !target.delete()) {
+            temp.delete();
+            throw new IOException("فایل مدل قبلی قابل جایگزینی نیست.");
+        }
+        if (!temp.renameTo(target)) {
+            copyFile(temp, target);
+            temp.delete();
+        }
+        return target;
+    }
+
     private JSObject status() {
         File file = modelFile();
         JSObject result = new JSObject();
         result.put("downloaded", isValidModel(file));
+        result.put("bundled", true);
         result.put("sizeBytes", file.exists() ? file.length() : 0);
-        result.put("model", "Whisper tiny-q5_1 multilingual");
-        result.put("downloadSizeBytes", 32200000);
+        result.put("model", "Whisper tiny-q5_1 multilingual (bundled in APK)");
+        result.put("downloadSizeBytes", 0);
         return result;
     }
 
     @PluginMethod
     public void modelStatus(PluginCall call) {
-        call.resolve(status());
+        worker.execute(() -> {
+            try {
+                ensureBundledModel();
+                resolveOnMain(call, status());
+            } catch (Exception e) {
+                rejectOnMain(call, "مدل آفلاین همراه برنامه آماده نشد. برنامه را دوباره نصب کنید.", e);
+            }
+        });
     }
 
     @PluginMethod
@@ -219,8 +254,7 @@ public class OfflineWhisperPlugin extends Plugin {
             File source = null;
             File wav = null;
             try {
-                File model = modelFile();
-                if (!isValidModel(model)) throw new IOException("مدل گفتار آفلاین نصب نیست؛ در تنظیمات آن را یک بار دانلود کنید.");
+                File model = ensureBundledModel();
                 source = stagedFile(token);
                 if (!source.isFile() || source.length() < 1024) throw new IOException("فایل صوتی برای تبدیل پیدا نشد.");
                 wav = new File(getContext().getCacheDir(), "yavar-asr-" + token + ".wav");
