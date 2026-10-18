@@ -45,7 +45,10 @@ test("prompt carries record identity, audio file name, every code and the formul
   assert.match(p, /Q12-12\.CONF:/);
   assert.match(p, /C6\.NOTE:/);
   assert.match(p, /COVERAGE/);
-  assert.match(p, /OVERALL/);\n  assert.match(p, /NOT encrypted/);\n  assert.match(p, /NO Base64/);\n  assert.match(p, /SOURCE_TRANSCRIPT_FILE/);
+  assert.match(p, /OVERALL/);
+  assert.match(p, /NOT encrypted/);
+  assert.match(p, /NO Base64/);
+  assert.match(p, /SOURCE_TRANSCRIPT_FILE/);
 });
 
 test("a blank prompt template is never accepted as a result", () => {
@@ -109,12 +112,14 @@ test("in-app AI question pairs map to the same coded answers", () => {
   assert.equal(out[0].code, "Q12-01");
   assert.equal(out[1].answered, false);
 });
-\n\ntest("external hand-off filenames are readable plain filenames for cross-model use", () => {
+
+
+test("external hand-off filenames are readable plain filenames for cross-model use", () => {
   const ready = { ...rec, exchangeAudioFiles: ["yavar-rec1-1.wav"], exchangeTranscriptFile: "yavar-rec1-transcript.txt" };
   assert.equal(audioFileName(ready, 0), "yavar-rec1-1.wav");
   assert.equal(transcriptFileName(ready), "yavar-rec1-transcript.txt");
   const prompt = buildExchangePrompt([ready], {});
-  assert.match(prompt, /yavar-rec1-1\\.wav/);
-  assert.match(prompt, /yavar-rec1-transcript\\.txt/);
+  assert.match(prompt, /yavar-rec1-1\.wav/);
+  assert.match(prompt, /yavar-rec1-transcript\.txt/);
   assert.match(prompt, /NO password/);
-});\n
+});
