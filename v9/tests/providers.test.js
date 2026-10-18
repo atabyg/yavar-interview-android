@@ -196,3 +196,38 @@ test("analysis requests route through Hugging Face Inference Providers with one 
   }
 });
 
+test("unsupported JSON mode retries once without response_format before validating the result", async () => {
+  const previous = globalThis.fetch;
+  const modelResult = {
+    summary: "پاسخ بدون JSON mode",
+    verdict: "مشروط / نیازمند بررسی بیشتر",
+    competencies: COMPETENCIES.map((name) => ({ name, score: 5, note: "شاهد آزمایشی" })),
+    strengths: [], weaknesses: [], redFlags: [], followUp: []
+  };
+  const requestBodies = [];
+  globalThis.fetch = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    requestBodies.push(body);
+    if (body.response_format) {
+      return new Response(JSON.stringify({ error: { message: "response_format json_object is not supported" } }), {
+        status: 400, headers: { "Content-Type": "application/json" }
+      });
+    }
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(modelResult) } }] }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  try {
+    const result = await analyze("متن نمونه", { candidate: "آزمون", position: "کارشناس" }, {
+      provider: "huggingface", key: "hf_test_user_token", model: "openai/gpt-oss-120b", questions: []
+    });
+    assert.equal(requestBodies.length, 2);
+    assert.ok(requestBodies[0].response_format);
+    assert.equal(Object.hasOwn(requestBodies[1], "response_format"), false);
+    assert.equal(result.overall, 50);
+    assert.equal(result.competencies.length, 6);
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
+
