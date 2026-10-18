@@ -28,10 +28,10 @@ export async function processInterview(id, options = {}) {
         try {
           model = await OfflineWhisper.modelStatus();
         } catch (error) {
-          throw new Error("تبدیل کاملاً آفلاین فقط در نسخهٔ اندروید در دسترس است.");
+          throw new Error("موتور آفلاین تبدیل گفتار روی این گوشی در دسترس نیست (" + String((error && error.message) || error || "") + "). نسخهٔ یاور را به‌روزرسانی کنید.");
         }
         if (!model || !model.downloaded) {
-          throw new Error("برای تبدیل کاملاً آفلاین، در تنظیمات روی «دانلود مدل آفلاین» بزنید. مدل یک بار دانلود می‌شود و پس از آن بدون اینترنت و کلید API کار می‌کند.");
+          throw new Error("مدل آفلاین همراه برنامه آماده نشد. فضای خالی گوشی را بررسی کنید و نسخهٔ کامل یاور را دوباره نصب کنید.");
         }
         const priorProvider = iv.transcribeProviderUsed || "";
         const texts = iv.segTexts && priorProvider === "offline" ? [...iv.segTexts] : [];
