@@ -59,6 +59,7 @@ const css = `.rp{width:794px;box-sizing:border-box;background:#fff;color:#14284B
 function blocks(iv, org) {
   const source = iv.analysis || {};
   const a = {
+    ...source,
     competencies: Array.isArray(source.competencies) ? source.competencies : [],
     strengths: Array.isArray(source.strengths) ? source.strengths : [],
     weaknesses: Array.isArray(source.weaknesses) ? source.weaknesses : [],
@@ -67,7 +68,7 @@ function blocks(iv, org) {
     transcriptWarnings: Array.isArray(source.transcriptWarnings) ? source.transcriptWarnings : [],
     qaPairs: Array.isArray(source.qaPairs) ? source.qaPairs : [],
     formAnswers: Array.isArray(source.formAnswers) ? source.formAnswers : [],
-    summary: source.summary || "", overall: source.overall ?? null, verdict: source.verdict || "", ...source
+    summary: source.summary || "", overall: source.overall ?? null, verdict: source.verdict || ""
   };
   const li = (x) => x.map((t) => `<li>${esc(t)}</li>`).join("");
   const B = [];
