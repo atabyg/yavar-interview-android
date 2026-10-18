@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, Square, Pause, Play, AlertTriangle, ListChecks, AudioLines } from "lucide-react";
+import { Mic, Square, Pause, Play, AlertTriangle, ListChecks, AudioLines, RefreshCw } from "lucide-react";
 import { Recorder, pickMime } from "../recorder";
 import { finalizeAudio, patchInterview, saveInterview, deleteInterview, uid } from "../db";
 import { getSettings, saveSettings, analysisKey } from "../settings";
@@ -8,8 +8,9 @@ import { fmtDur } from "../export";
 import { toast } from "../ui";
 import { OfflineSpeech } from "../native-bridge";
 import { QUESTION_SETS, questionSetFor } from "../questions";
+import { newCaseNumber, dayKey, timeLabel } from "../daily";
 
-export default function Record({ folders, onOpen }) {
+export default function Record({ folders, items = [], onOpen }) {
   const rec = useRef(null);
   const idRef = useRef("");
   const transcriptRef = useRef("");
@@ -21,6 +22,7 @@ export default function Record({ folders, onOpen }) {
   const [bars, setBars] = useState(Array(24).fill(4));
   const [candidate, setCandidate] = useState("");
   const [position, setPosition] = useState("");
+  const [caseNumber, setCaseNumber] = useState("");
   const [folderId, setFolderId] = useState(getSettings().lastFolder);
   const [questionSet, setQuestionSet] = useState(getSettings().questionSet || "critical12");
   const [questionsOpen, setQuestionsOpen] = useState(false);
@@ -29,6 +31,11 @@ export default function Record({ folders, onOpen }) {
   const [partial, setPartial] = useState("");
   const [speechStatus, setSpeechStatus] = useState("");
   const [speechError, setSpeechError] = useState("");
+
+  // Every number ever issued (stored forever) + numbers on existing records -> never repeated.
+  const usedNumbers = () => [...(getSettings().usedCaseNumbers || []), ...items.map((i) => i.caseNumber).filter(Boolean)];
+  const freshCase = () => { try { setCaseNumber(newCaseNumber(usedNumbers())); } catch (e) { toast(e.message); } };
+  useEffect(() => { if (!caseNumber) freshCase(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -46,17 +53,6 @@ export default function Record({ folders, onOpen }) {
     listenersRef.current = [];
     await Promise.all(hs.map(async (h) => { try { await h.remove(); } catch (e) {} }));
   }
-  function appendFinal(value) {
-    const text = String(value || "").trim();
-    if (!text) return;
-    const next = (transcriptRef.current ? transcriptRef.current + "\n" : "") + text;
-    transcriptRef.current = next;
-    partialRef.current = "";
-    setTranscript(next);
-    setPartial("");
-    const id = idRef.current;
-    if (id) patchInterview(id, { transcript: next }, true).catch(() => {});
-  }
   async function startSpeech(id) {
     if (speechStartedRef.current) await stopSpeech();
     const provider = getSettings().transcribeProvider;
@@ -71,8 +67,6 @@ export default function Record({ folders, onOpen }) {
   async function stopSpeech() {
     if (!speechStartedRef.current) return;
     try { await OfflineSpeech.stop(); } catch (e) {}
-    // Let a final-result event arrive before releasing listeners and persisting the transcript.
-    // Android can deliver the final recognition result after stopListening; wait long enough before removing listeners.
     await new Promise((resolve) => setTimeout(resolve, 1900));
     await removeSpeechListeners();
     speechStartedRef.current = false;
@@ -85,6 +79,8 @@ export default function Record({ folders, onOpen }) {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === "undefined") {
       toast("این دستگاه از ضبط صدا پشتیبانی نمی‌کند."); return;
     }
+    const caseNo = caseNumber.trim();
+    if (!/^\d{6}$/.test(caseNo)) { toast("شمارهٔ پرونده باید ۶ رقم باشد یا از دکمهٔ شمارهٔ جدید استفاده کنید."); return; }
     setBusy(true);
     const id = uid();
     const mime = pickMime();
@@ -94,18 +90,20 @@ export default function Record({ folders, onOpen }) {
     setTranscript(""); setPartial(""); setSpeechError(""); setSpeechStatus("");
     setQuestionsOpen(true);
     try {
+      const now = Date.now();
       await saveInterview({
         id,
-        title: "مصاحبه " + new Date().toLocaleDateString("fa-IR-u-ca-persian") + " " + new Date().toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" }),
-        candidate: candidate.trim(), position: position.trim(), interviewer: s.interviewer, folderId,
-        createdAt: Date.now(), durationSec: 0, status: "recording", starred: false, segs: 0,
+        title: "مصاحبه " + dayKey(now) + " " + timeLabel(now),
+        candidate: candidate.trim(), position: position.trim(), caseNumber: caseNo, interviewer: s.interviewer, folderId,
+        createdAt: now, durationSec: 0, status: "recording", starred: false, segs: 0,
         mime: mime || "audio/webm", sizeBytes: 0, transcript: "",
         questionSet: qs.id, questionSetLabel: qs.label
       });
       rec.current = new Recorder();
       idRef.current = id;
       await rec.current.start(id, mime, setSt);
-      await saveSettings({ lastFolder: folderId, questionSet });
+      const used = Array.from(new Set([...(s.usedCaseNumbers || []), caseNo]));
+      await saveSettings({ lastFolder: folderId, questionSet, usedCaseNumbers: used });
       await startSpeech(id);
     } catch (e) {
       await deleteInterview(id);
@@ -147,10 +145,9 @@ export default function Record({ folders, onOpen }) {
       });
       await finalizeAudio(id);
       await patchInterview(id, { status: "recorded" });
-      setCandidate(""); setPosition("");
+      setCandidate(""); setPosition(""); setCaseNumber("");
       const s = getSettings();
       if (s.transcribeProvider === "offline") {
-        // Transcribe saved audio locally every time; analysis remains governed by the existing opt-in.
         processInterview(id, { transcribeOnly: !s.autoProcess });
       } else if (s.autoProcess && analysisKey(s)) {
         processInterview(id);
@@ -159,6 +156,7 @@ export default function Record({ folders, onOpen }) {
     }
     idRef.current = "";
     setSec(0); setBars(Array(24).fill(4)); setBusy(false);
+    setTimeout(freshCase, 400);
   }
 
   const active = st === "recording" || st === "paused" || st === "interrupted";
@@ -199,9 +197,14 @@ export default function Record({ folders, onOpen }) {
       </div>
 
       {!active && <div className="card">
-        <div className="mut" style={{ marginBottom: 8 }}>اطلاعات اختیاری (بعداً هم قابل ویرایش است)</div>
-        <input className="inp" placeholder="نام متقاضی" value={candidate} onChange={(e) => setCandidate(e.target.value)} />
-        <input className="inp" style={{ marginTop: 8 }} placeholder="سمت" value={position} onChange={(e) => setPosition(e.target.value)} />
+        <div className="mut" style={{ marginBottom: 8 }}>مشخصات مددجو (بعداً هم قابل ویرایش است)</div>
+        <input className="inp" placeholder="نام مددجو / متقاضی" value={candidate} onChange={(e) => setCandidate(e.target.value)} />
+        <div className="row" style={{ marginTop: 8 }}>
+          <input className="inp en grow" inputMode="numeric" maxLength={6} placeholder="شمارهٔ پرونده (۶ رقم)" value={caseNumber} onChange={(e) => setCaseNumber(e.target.value.replace(/\D/g, "").slice(0, 6))} />
+          <button className="btn alt sm" onClick={freshCase} title="شمارهٔ جدید"><RefreshCw size={15} /> شمارهٔ جدید</button>
+        </div>
+        <div className="mut" style={{ marginTop: 5, fontSize: 12 }}>شمارهٔ پرونده به‌صورت تصادفی و غیرتکراری ساخته می‌شود. برای جلسهٔ دوم یک مددجوی قبلی، همان شماره را دستی بنویسید.</div>
+        <input className="inp" style={{ marginTop: 8 }} placeholder="سمت / عنوان شغلی مددجو (اختیاری)" value={position} onChange={(e) => setPosition(e.target.value)} />
         {folders.length > 0 && <div className="chips" style={{ marginTop: 10, marginBottom: 0 }}>
           <button className={"chip " + (!folderId ? "on" : "")} onClick={() => setFolderId(null)}>بدون پوشه</button>
           {folders.map((f) => <button key={f.id} className={"chip " + (folderId === f.id ? "on" : "")} onClick={() => setFolderId(f.id)}>{f.name}</button>)}
@@ -211,12 +214,11 @@ export default function Record({ folders, onOpen }) {
       {(active || transcript || speechError) && <div className="card">
         <div className="row" style={{ marginBottom: 8 }}><AudioLines size={17} /><b className="grow">{getSettings().transcribeProvider === "offline" ? "متن گفت‌وگو (پس از ضبط)" : "متن گفت‌وگو"}</b><span className="mut">{transcript.trim() ? transcript.trim().split(/\s+/).length + " واژه" : "در انتظار گفتار"}</span></div>
         <textarea className="inp tx" rows={7} readOnly value={visibleTranscript} placeholder={getSettings().transcribeProvider === "offline" ? "پس از پایان ضبط، مدل Whisper متن را به‌صورت آفلاین می‌سازد…" : "تبدیل ابری پس از پایان ضبط و شروع پردازش انجام می‌شود."} style={{ minHeight: 140, maxHeight: 260, resize: "vertical" }} />
-        {partial && <div className="mut" style={{ marginTop: 5 }}>جملهٔ در حال تشخیص، هنوز قطعی نیست.</div>}
         {active && <div className="mut" style={{ marginTop: 6, lineHeight: 1.8 }}>در حالت آفلاین، صوت تا پایان ضبط روی گوشی ذخیره می‌شود و سپس مدل Whisper آن را پردازش می‌کند. در سکوت، لهجه یا نویز شدید ممکن است خطا رخ دهد؛ متن نهایی را پیش از تحلیل بازبینی کنید.</div>}
       </div>}
 
       {!analysisKey() && !active && <div className="card mut" style={{ lineHeight: 1.9 }}>
-        برای امتیازدهی خودکار، در «تنظیمات» یک سرویس تحلیل و کلید آن را انتخاب کنید. ضبط و در صورت پشتیبانی گوشی، تبدیل گفتار آفلاین بدون کلید هم کار می‌کند.
+        برای امتیازدهی خودکار، در «تنظیمات» یک سرویس تحلیل و کلید آن را انتخاب کنید. ضبط و تبدیل گفتار آفلاین بدون کلید هم کار می‌کند.
       </div>}
     </div>
   );
