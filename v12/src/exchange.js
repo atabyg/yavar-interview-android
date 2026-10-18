@@ -253,7 +253,8 @@ export const coverageOf = (formAnswers) => (formAnswers.length ? Math.round((for
 
 // ------------------------------------------------------------------ files shared with the external AI
 export const audioExt = (mime) => (/mp4/.test(mime || "") ? "m4a" : /ogg/.test(mime || "") ? "ogg" : "webm");
-export const audioFileName = (rec, k) => "yavar-" + rec.id + "-" + (k + 1) + "." + audioExt(rec.mime);
+export const audioFileName = (rec, k) => (rec.exchangeAudioFiles && rec.exchangeAudioFiles[k]) || ("yavar-" + rec.id + "-" + (k + 1) + "." + audioExt(rec.mime));
+export const transcriptFileName = (rec) => rec.exchangeTranscriptFile || ("yavar-" + rec.id + "-transcript.txt");
 export const promptFileName = (records, key) => (records.length === 1
   ? "yavar-prompt-" + (records[0].caseNumber || records[0].id) + ".txt"
   : "yavar-prompt-" + String(key || "batch").replace(/\//g, "-") + ".txt");
@@ -267,6 +268,8 @@ function recordTemplate(rec) {
   L.push("DATE_JALALI: " + dayKey(rec.createdAt));
   L.push("FORM: " + spec.prefix);
   L.push("CLIENT_NAME: " + oneLine(rec.candidate));
+  L.push("SOURCE_TRANSCRIPT_FILE: " + transcriptFileName(rec));
+  L.push("DATA_FORMAT: plain UTF-8 text; NOT encrypted; NO password; NO Base64; NO hidden encoding.");
   L.push("# --- پاسخ سؤال‌ها: برای هر کد سه خط (پاسخ، شاهد، اطمینان) ---");
   for (const it of spec.items) {
     L.push("# " + it.code + " | " + it.question);
@@ -293,22 +296,24 @@ export function buildExchangePrompt(records, opts = {}) {
   const list = Array.isArray(records) ? records : [];
   const L = [];
   L.push("#YAVAR_EXCHANGE_PROMPT v1");
-  L.push("نقش تو: دستیار استخراج اطلاعات از گفت‌وگوی صوتی فارسی (مصاحبه با مددجو یا متقاضی).");
-  L.push("ورودی: دو چیز همراه هم به تو داده شده است: (۱) فایل(های) صوتی پیوست، (۲) همین فایل متنی. هر رکوردِ فهرست‌شده در پایین فایل(های) صوتی مخصوص خودش را دارد.");
-  L.push("کار تو: صوت هر رکورد را کامل گوش بده و قالب همان رکورد را پر کن. قالب‌ها آماده‌اند؛ فقط بعد از دو نقطه مقدار بنویس و کدها و ساختار را تغییر نده.");
+  L.push("INTEROPERABILITY: همهٔ فایل‌ها بدون رمزگذاری یا رمز عبور هستند. متن UTF-8 معمولی و برچسب‌ها و کدها اسم‌های خوانای فیلد هستند؛ هیچ رمزگشایی، بازکردن قفل، Base64 یا تبدیل مخفی لازم نیست.");
+  L.push("AUDIO NOTE: صوت تا حد امکان به WAV استاندارد PCM تک‌کاناله 16kHz تبدیل شده است. پشتیبانی از دریافت یا شنیدن صوت به برنامه و مدل مقصد وابسته است و یکسان نیست؛ اگر رابط تو صوت را نمی‌پذیرد یا نمی‌توانی واقعاً آن را بشنوی، فایل متن transcript را تحلیل کن و هرگز ادعا نکن صوت را شنیده‌ای.");
+  L.push("نقش تو: دستیار استخراج اطلاعات از گفت‌وگوی فارسی مصاحبه با مددجو یا متقاضی، قابل‌استفاده در هر مدل هوش مصنوعی که متن ساده را می‌خواند.");
+  L.push("ورودی: پرامپت متنی حاضر، فایل(های) صوتی با نام‌های ذکرشده و در صورت موجود بودن یک فایل TXT با متن گفت‌وگوی همان رکورد. فایل TXT مرجع پشتیبان برای رابط‌هایی است که صوت را نمی‌پذیرند.");
+  L.push("کار تو: اگر ابزار صوتی در دسترس است، صوت همان رکورد را بررسی و با متن TXT مقایسه کن؛ اگر ابزار صوتی در دسترس نیست، فقط از متن TXT استفاده کن و این محدودیت را در WARNINGS گزارش کن. سپس قالب همان رکورد را پر کن.");
   if (opts.dayKey) L.push("روز (شمسی): " + opts.dayKey);
   L.push("");
   L.push("قواعد الزامی:");
-  L.push("1) فقط از چیزی استفاده کن که در صوت گفته شده است. چیزی را حدس نزن، کامل نکن و اختراع نکن.");
+  L.push("1) اگر صوت واقعاً قابل پردازش است فقط از محتوای صوت و متن همراه آن استفاده کن؛ در غیر این صورت از متن TXT استفاده کن. چیزی را حدس نزن، کامل نکن و اختراع نکن.");
   L.push("2) هر کد Q..-.. فقط وقتی پاسخ دارد که پاسخ همان سؤال در صوت واقعاً آمده باشد. اگر سؤال پرسیده نشد، پاسخ داده نشد یا نامفهوم بود، دقیقاً EMPTY بنویس (برای EVIDENCE و CONF همان کد هم EMPTY).");
   L.push("3) پاسخ هر کد: خلاصهٔ وفادار حرف مددجو/متقاضی در یک خط (حداکثر ۴۰ واژه). EVIDENCE: عین یک عبارت کوتاه از صوت (حداکثر ۲۵ واژه). CONF: فقط HIGH یا MEDIUM یا LOW.");
-  L.push("4) هر مقدار فقط در یک خط باشد؛ از Markdown، جدول، فهرست شماره‌دار، کد بلاک و خط جدید داخل مقدار استفاده نکن.");
+  L.push("4) هر مقدار فقط در یک خط باشد؛ از Markdown، جدول، فهرست شماره‌دار، کدبلاک و خط جدید داخل مقدار استفاده نکن. خود فایل در قالب متن ساده است و رمزگذاری یا قفل ندارد.");
   L.push("5) نمرهٔ C1 تا C6: عدد صحیح ۰ تا ۱۰ فقط بر پایهٔ شواهد صوت؛ اگر شواهد کافی نیست EMPTY بنویس و دلیلش را در NOTE بیاور.");
   L.push("6) کلیدها و کدها (مثل Q12-03.EVIDENCE) را ترجمه یا تغییر نده. فقط مقدارها فارسی باشند؛ مقدارهای CONF و EMPTY انگلیسی بمانند.");
   L.push("7) RECORD_ID، CASE_NUMBER، DATE_JALALI و FORM را عیناً از قالب بگذار.");
   L.push("8) فهرست‌ها (STRENGTHS، WEAKNESSES، REDFLAGS، FOLLOWUP، WARNINGS): هر مورد را با علامت | جدا کن؛ حداکثر ۵ مورد؛ اگر چیزی نبود EMPTY.");
   L.push("9) متن کامل گفت‌وگو (اختیاری ولی توصیه‌شده) را بین TRANSCRIPT_BEGIN و TRANSCRIPT_END بگذار؛ بخش‌های نامفهوم را با [نامفهوم] علامت بزن.");
-  L.push("10) خروجی نهایی فقط خود بلوک‌های قالب باشد (از خط شروع تا خط پایان هر بلوک)، بدون توضیح یا مقدمهٔ اضافه، برای هر رکورد یک بلوک جدا. خروجی را به‌صورت متن ساده یا فایل txt/Word تحویل بده.");
+  L.push("10) خروجی فقط متن سادهٔ UTF-8 یا فایل TXT/DOCX خوانا باشد؛ هیچ رمزگذاری، رمزعبور، Base64، کدبلاک یا JSON لازم نیست. خروجی نهایی فقط بلوک‌های #YAVAR_RESULT v1 باشد، برای هر رکورد یک بلوک جدا. کدهای Q5/Q12/Q24 فقط شناسهٔ خوانای سؤال‌اند، نه دادهٔ رمزگذاری‌شده.");
   L.push("");
   L.push("محاسبات (برنامهٔ یاور همین فرمول‌ها را دوباره حساب می‌کند و اگر مقدار تو فرق داشته باشد مقدار خودش را ثبت و هشدار می‌دهد؛ نوشتن COVERAGE و OVERALL اختیاری است):");
   L.push("- COVERAGE = گرد( تعداد کدهای دارای پاسخ ÷ تعداد کل سؤال‌های فرم × ۱۰۰ )");

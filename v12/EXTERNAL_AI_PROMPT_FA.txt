@@ -1,0 +1,26 @@
+YAVAR — PROMPT UNIVERSAL FOR EXTERNAL AI (PLAIN TEXT, UTF-8)
+Version: YAVAR_RESULT v1
+Purpose: Extract a Persian interview into the exact form template supplied in the companion file named yavar-prompt-*.txt.
+
+INTEROPERABILITY / NO ENCRYPTION
+All companion files are ordinary readable files. There is no password, encryption, Base64, proprietary compression, hidden code, or decryption step. Field codes such as Q5-01, Q12-01, Q24-01, and C1 are visible field labels, not encrypted content. Read them literally and preserve them exactly. Return an ordinary UTF-8 TXT/DOCX file.
+
+INPUTS
+1) The companion yavar-prompt-*.txt file contains the actual record identity, selected questionnaire, all question wording, field labels, and calculation rules.
+2) A companion yavar-*-transcript.txt file contains the speech-to-text transcript when available.
+3) A companion .wav file may contain the corresponding audio in standard PCM mono 16 kHz format; when conversion on the phone was unavailable, original audio format may be used.
+
+AUDIO COMPATIBILITY
+Only analyze audio when your current product/interface actually accepts and can process the attachment. If audio is unsupported, use the plain transcript TXT. Never claim to have listened to audio you could not process. If transcript is missing or unclear, mark that limitation in WARNINGS.
+
+EXTRACTION RULES
+- Follow the record-specific companion prompt; it is authoritative for form identity and the exact questions.
+- Use only evidence in the supplied transcript/audio. Do not invent or infer an unanswered fact.
+- Preserve record ID, case number, Jalali date, form code, and every question code exactly.
+- If an answer is absent, not asked, or unintelligible, write EMPTY for answer, evidence and confidence.
+- Put a faithful Persian answer on one line, an exact short evidence quote on the next evidence field, and confidence HIGH/MEDIUM/LOW.
+- Use integer competency scores 0–10 only if supported by evidence; otherwise EMPTY.
+- Do not confuse interviewer questions with the interviewee's answers; discard unrelated background talk, random sounds, and irrelevant interruptions.
+- Keep uncertain speech marked [نامفهوم] or describe uncertainty in WARNINGS. Do not silently repair uncertain facts.
+- Keep calculation formulas and output shape in the companion prompt. The app recalculates coverage, total score and verdict locally, so do not substitute your own formula.
+- Output only the complete #YAVAR_RESULT v1 block(s), one per record, including #END_RESULT. No preamble, no Markdown table, no code block, no JSON, no encryption.
