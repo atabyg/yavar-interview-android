@@ -1,26 +1,34 @@
-YAVAR — PROMPT UNIVERSAL FOR EXTERNAL AI (PLAIN TEXT, UTF-8)
-Version: YAVAR_RESULT v1
-Purpose: Extract a Persian interview into the exact form template supplied in the companion file named yavar-prompt-*.txt.
+پرامپت عمومی و سازگار با هوش مصنوعی‌های بیرونی — یاور مصاحبه
+نسخهٔ قالب نتیجه: #YAVAR_RESULT v1
+زبان گفت‌وگو: فارسی
+هدف: استخراج وفادار اطلاعات از مصاحبه و پرکردن قالب کدگذاری‌شده‌ای که در فایل همراه yavar-prompt-*.txt آمده است.
 
-INTEROPERABILITY / NO ENCRYPTION
-All companion files are ordinary readable files. There is no password, encryption, Base64, proprietary compression, hidden code, or decryption step. Field codes such as Q5-01, Q12-01, Q24-01, and C1 are visible field labels, not encrypted content. Read them literally and preserve them exactly. Return an ordinary UTF-8 TXT/DOCX file.
+۱) خوانایی و امنیت قالب
+تمام فایل‌های این بسته فایل‌های عادی و خوانا هستند؛ رمزگذاری، رمزعبور، Base64، فشرده‌سازی اختصاصی، قفل یا مرحلهٔ رمزگشایی وجود ندارد. برچسب‌هایی مثل Q5-01، Q12-01، Q24-01 و C1 فقط نام خوانای خانه‌های فرم هستند، نه متن رمز‌شده. آن‌ها را عیناً نگه‌دار و ترجمه یا تغییر نده. خروجی را به‌شکل متن UTF-8 معمولی یا فایل TXT/DOCX قابل‌خواندن تحویل بده.
 
-INPUTS
-1) The companion yavar-prompt-*.txt file contains the actual record identity, selected questionnaire, all question wording, field labels, and calculation rules.
-2) A companion yavar-*-transcript.txt file contains the speech-to-text transcript when available.
-3) A companion .wav file may contain the corresponding audio in standard PCM mono 16 kHz format; when conversion on the phone was unavailable, original audio format may be used.
+۲) فایل‌های ورودی
+الف) فایل yavar-prompt-*.txt: شناسهٔ رکورد، شمارهٔ پرونده، تاریخ شمسی، فرم انتخابی، عبارت دقیق سؤال‌ها، کدهای پاسخ، ترتیب شایستگی‌ها و فرمول محاسبات را در خود دارد. این فایل دستور اختصاصی همان پرونده است و باید دقیقاً از آن پیروی کنی.
+ب) فایل yavar-*-transcript.txt: متن تشخیص گفتار موجود، همراه با شناسه و مشخصات پرونده.
+پ) فایل صوتی .wav در قالب استاندارد PCM تک‌کاناله با نرخ ۱۶ کیلوهرتز؛ اگر گوشی نتوانسته باشد صوت را به WAV تبدیل کند، فایل صوتی اصلی با قالب واقعی خودش می‌آید.
 
-AUDIO COMPATIBILITY
-Only analyze audio when your current product/interface actually accepts and can process the attachment. If audio is unsupported, use the plain transcript TXT. Never claim to have listened to audio you could not process. If transcript is missing or unclear, mark that limitation in WARNINGS.
+۳) محدودیت پشتیبانی صوت
+فقط وقتی صوت را تحلیل کن که برنامه یا رابط فعلی واقعاً فایل صوتی را می‌پذیرد و قادر به پردازش/شنیدن آن است. اگر صوت پشتیبانی نمی‌شود، از فایل TXT متن گفت‌وگو استفاده کن. هرگز ادعا نکن صوتی را شنیده‌ای که نتوانسته‌ای باز کنی یا پردازش کنی. اگر متن هم موجود نیست، این محدودیت را در WARNINGS صریح بنویس و پاسخ یا شاهد نساز.
 
-EXTRACTION RULES
-- Follow the record-specific companion prompt; it is authoritative for form identity and the exact questions.
-- Use only evidence in the supplied transcript/audio. Do not invent or infer an unanswered fact.
-- Preserve record ID, case number, Jalali date, form code, and every question code exactly.
-- If an answer is absent, not asked, or unintelligible, write EMPTY for answer, evidence and confidence.
-- Put a faithful Persian answer on one line, an exact short evidence quote on the next evidence field, and confidence HIGH/MEDIUM/LOW.
-- Use integer competency scores 0–10 only if supported by evidence; otherwise EMPTY.
-- Do not confuse interviewer questions with the interviewee's answers; discard unrelated background talk, random sounds, and irrelevant interruptions.
-- Keep uncertain speech marked [نامفهوم] or describe uncertainty in WARNINGS. Do not silently repair uncertain facts.
-- Keep calculation formulas and output shape in the companion prompt. The app recalculates coverage, total score and verdict locally, so do not substitute your own formula.
-- Output only the complete #YAVAR_RESULT v1 block(s), one per record, including #END_RESULT. No preamble, no Markdown table, no code block, no JSON, no encryption.
+۴) روش استخراج
+- فقط از اطلاعات قابل مشاهده در متن یا صوتِ واقعاً پردازش‌شده استفاده کن؛ چیزی را حدس نزن، کامل نکن و اختراع نکن.
+- سؤال مصاحبه‌گر را با پاسخ مددجو اشتباه نگیر. گفت‌وگوی تصادفی، صدای پس‌زمینه و جمله‌های نامربوط را وارد پاسخ فرم نکن؛ اگر تشخیص نامطمئن است، ابهام را گزارش کن.
+- شناسهٔ رکورد، شمارهٔ پرونده، تاریخ شمسی، کد فرم و همهٔ کدهای سؤال را عیناً از قالب همراه حفظ کن.
+- برای هر سؤال، پاسخ کوتاه و وفادار به گفته‌ها را در همان کد بنویس؛ شاهد باید عبارت کوتاهی باشد که واقعاً در متن/صوت آمده است.
+- اگر سؤال مطرح نشده، پاسخ داده نشده یا پاسخ نامفهوم است، برای فیلد پاسخ، شاهد و اطمینان دقیقاً EMPTY بنویس. آن را از روی سؤال یا اطلاعات عمومی پر نکن.
+- مقدار اطمینان فقط یکی از HIGH، MEDIUM یا LOW باشد؛ اگر پاسخ EMPTY است، اطمینان و شاهد هم EMPTY بماند.
+- نمرهٔ هر شایستگی عدد صحیح ۰ تا ۱۰ باشد و فقط بر پایهٔ شواهد موجود تعیین شود. اگر شاهد کافی نیست، نمره EMPTY باشد و علت در NOTE یا WARNINGS بیاید.
+- جمع‌بندی، نقاط قوت، نقاط قابل بهبود، هشدارها و سؤال‌های پیگیری را فقط بر پایهٔ محتوا بساز. هر مورد را با | جدا کن؛ اگر چیزی وجود ندارد EMPTY بنویس.
+- مقادیر را یک‌خطی نگه دار. کدها، اسم فیلدها و نشانه‌های قالب را تغییر نده.
+
+۵) محاسبه و تصمیم
+فرمول‌های دقیق در فایل همراه آمده‌اند. برنامهٔ یاور پوشش پاسخ‌ها، امتیاز کل و نتیجه را دوباره روی خود گوشی محاسبه می‌کند؛ فرمول جایگزین نساز و اگر عددی را گزارش می‌کنی، با فرمول همراه سازگار باش. کامل نبودن پاسخ‌ها را با EMPTY حفظ کن؛ آن را به‌عنوان پاسخ منفی یا امتیاز صفر تفسیر نکن، مگر قالب و شواهد صریحاً آن را تعیین کرده باشند.
+
+۶) قالب خروجی الزامی
+فقط بلوک کامل #YAVAR_RESULT v1 را برای هر رکورد، از خط شروع تا #END_RESULT، خروجی بده. مقدمه، نتیجه‌گیری بیرون از بلوک، جدول Markdown، کدبلاک، JSON، رمزگذاری یا متن اضافه ننویس. قالب خروجی را از فایل همراه کپی کن و فقط مقدارهای خالی را پر کن. متن کامل گفت‌وگو را فقط در محل TRANSCRIPT_BEGIN و TRANSCRIPT_END قرار بده؛ بخش نامفهوم را با [نامفهوم] مشخص کن.
+
+این قالب برای همکاری با Claude و دیگر هوش مصنوعی‌هایی است که متن ساده را می‌خوانند. سازگاری در خواندن صوت به سرویس مقصد وابسته است؛ به همین دلیل فایل متن گفت‌وگو نیز همراه بسته قرار داده می‌شود.
