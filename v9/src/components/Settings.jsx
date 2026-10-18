@@ -1,21 +1,15 @@
 import { useEffect, useState } from "react";
 import { Eye, EyeOff, KeyRound, Trash2, ShieldCheck, Loader2, HardDrive, Wifi, Mic } from "lucide-react";
 import { requestPersist } from "../db";
-import { getSettings, saveSettings } from "../settings";
+import { getSettings, saveSettings, ANALYSIS_PROVIDERS } from "../settings";
 import { testProviderKey, friendly } from "../openai";
 import { ask, size, toast } from "../ui";
 import { OfflineWhisper } from "../native-bridge";
 
 const Sw = ({ on, set, label }) => <button className={"sw " + (on ? "on" : "")} style={{ width: "100%" }} onClick={() => set(!on)}><span>{label}</span><i /></button>;
-const PROVIDERS = {
-  groq: { label: "Groq", models: ["openai/gpt-oss-20b", "openai/gpt-oss-120b"], defaultModel: "openai/gpt-oss-20b" },
-  gemini: { label: "Google Gemini", models: ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite"], defaultModel: "gemini-3.1-flash-lite" }
-};
-const KEY_PROVIDERS = ["groq", "gemini"];
-const FREE_MODELS = {
-  groq: ["openai/gpt-oss-20b", "openai/gpt-oss-120b"],
-  gemini: ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
-};
+const PROVIDERS = ANALYSIS_PROVIDERS;
+const KEY_PROVIDERS = Object.keys(ANALYSIS_PROVIDERS);
+const FREE_MODELS = Object.fromEntries(Object.entries(ANALYSIS_PROVIDERS).map(([id, item]) => [id, item.models]));
 const freeModels = (provider, discovered = []) => {
   const allowed = FREE_MODELS[provider] || [];
   const found = allowed.filter((id) => discovered.includes(id));
@@ -101,14 +95,22 @@ export default function Settings({ storage, onChange }) {
       <div className="card">
         <h4><Wifi size={14} style={{ verticalAlign: "-2px" }} /> سرویس تحلیل و امتیازدهی</h4>
         <select className="inp" value={s.analyzeProvider} onChange={(e) => changeAnalyzeProvider(e.target.value)}>
-          <option value="groq">Groq — GPT-OSS 20B / سهمیهٔ رایگان محدود</option>
-          <option value="gemini">Google Gemini — Flash Lite / سهمیهٔ رایگان محدود</option>
+          {KEY_PROVIDERS.map((p) => <option value={p} key={p}>{PROVIDERS[p].label} / سهمیهٔ رایگان محدود</option>)}
         </select>
+        <div className="mut" style={{ marginTop: 7, lineHeight: 1.8 }}>
+          {s.analyzeProvider === "openrouter"
+            ? "OpenRouter Free خودش از میان مدل‌های رایگانِ در دسترس انتخاب می‌کند؛ نیازی به انتخاب مدل جداگانه نیست."
+            : s.analyzeProvider === "cerebras"
+              ? "Cerebras از API سازگار با OpenAI استفاده می‌کند؛ مدل‌های رایگانِ قابل‌انتخاب بر اساس دسترسی حساب نمایش داده می‌شوند."
+              : s.analyzeProvider === "gemini"
+                ? "Google AI Studio یک سطح رایگان محدود دارد؛ مدل‌های رایگان و سهمیه ممکن است با منطقه و حساب تفاوت داشته باشند."
+                : "Groq با مدل‌های GPT-OSS انتخاب شده و برای استفادهٔ رایگان محدود، ساخت کلید شخصی لازم دارد."}
+        </div>
         <div className="mut" style={{ margin: "8px 0 4px" }}>مدل تحلیل</div>
         <select className="inp" value={s.analyzeModel} onChange={(e) => upd({ analyzeModel: e.target.value })}>
           {(modelLists[s.analyzeProvider]?.length ? modelLists[s.analyzeProvider] : (PROVIDERS[s.analyzeProvider] || PROVIDERS.groq).models).map((m) => <option value={m} key={m}>{m}</option>)}
         </select>
-        <div className="mut" style={{ marginTop: 8, lineHeight: 1.8 }}>فقط مدل‌های دارای پلن رایگان محدود در فهرست دیده می‌شوند. سهمیه به حساب، منطقه و سیاست روز سرویس بستگی دارد و تضمین‌شده نیست. اگر برای حساب سرویس صورتحساب فعال است، محدودیت رایگان لزوماً سقف هزینه نیست؛ برای جلوگیری از هزینهٔ ناخواسته، صورتحساب و محدودیت حساب را هم در پنل همان سرویس بررسی کنید.</div>
+        <div className="mut" style={{ marginTop: 8, lineHeight: 1.8 }}>فقط سرویس‌ها و مدل‌هایی انتخاب شده‌اند که مسیر استفادهٔ رایگان محدود دارند. سهمیه به حساب، منطقه و سیاست روز سرویس بستگی دارد و تضمین‌شده نیست. اگر صورتحساب فعال است، محدودیت رایگان لزوماً سقف هزینه نیست؛ برای جلوگیری از هزینهٔ ناخواسته، صورتحساب و محدودیت حساب را در پنل بررسی کنید. متن مصاحبه برای تحلیل به سرور ارائه‌دهنده ارسال می‌شود؛ اطلاعات شناسایی یا محرمانه را فقط با مجوز مناسب ارسال کنید.</div>
       </div>
 
       <div className="card">
@@ -152,6 +154,10 @@ export default function Settings({ storage, onChange }) {
         <select className="inp" value={keyProvider} onChange={(e) => { setKeyProvider(e.target.value); setKey(""); setShow(false); }}>
           {KEY_PROVIDERS.map((p) => <option value={p} key={p}>{PROVIDERS[p].label}</option>)}
         </select>
+        <div className="mut" style={{ marginTop: 8, lineHeight: 1.8 }}>
+          ساخت کلید از صفحهٔ رسمی سرویس:
+          {" "}<a href={PROVIDERS[keyProvider].keyUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent)", textDecoration: "underline" }}>باز کردن صفحهٔ {PROVIDERS[keyProvider].label}</a>
+        </div>
         {selectedKey && <div className="row" style={{ marginTop: 12 }}>
           <div className="grow"><div style={{ direction: "ltr", textAlign: "right", fontFamily: "monospace", fontSize: 13 }}>{masked}</div><div className="mut"><ShieldCheck size={12} /> کلید در حافظهٔ محلی دستگاه ذخیره شده است.</div></div>
           <button className="ib red" onClick={delKey}><Trash2 size={18} /></button>
