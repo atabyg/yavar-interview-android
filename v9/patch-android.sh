@@ -278,6 +278,20 @@ tar -xzf "$WHISPER_ARCHIVE" --strip-components=1 -C "$NATIVE_DIR/whisper.cpp"
 cp native/CMakeLists.txt "$NATIVE_DIR/CMakeLists.txt"
 cp native/whisper_jni.cpp "$NATIVE_DIR/whisper_jni.cpp"
 cp native/OfflineWhisperPlugin.java "$JAVA_NATIVE_DIR/OfflineWhisperPlugin.java"
+
+# Bundle the multilingual Whisper model inside the APK so users never need an in-app model download.
+MODEL_ASSET_DIR="android/app/src/main/assets/models"
+MODEL_ASSET="$MODEL_ASSET_DIR/ggml-tiny-q5_1.bin"
+MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/f281eb45af861ab5e5297d23694b7d46e090c02c/ggml-tiny-q5_1.bin?download=true"
+MODEL_SHA256="818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7"
+mkdir -p "$MODEL_ASSET_DIR"
+if [[ ! -s "$MODEL_ASSET" ]] || [[ "$(sha256sum "$MODEL_ASSET" | awk '{print $1}')" != "$MODEL_SHA256" ]]; then
+  curl -fL --retry 4 --retry-delay 2 --connect-timeout 30 "$MODEL_URL" -o "$MODEL_ASSET.tmp"
+  echo "$MODEL_SHA256  $MODEL_ASSET.tmp" | sha256sum -c -
+  mv "$MODEL_ASSET.tmp" "$MODEL_ASSET"
+fi
+test -s "$MODEL_ASSET"
+echo "Bundled offline Persian Whisper model: $(du -h "$MODEL_ASSET" | cut -f1)"
 sed -i "s/__PACKAGE__/$PKG/g" "$JAVA_NATIVE_DIR/OfflineWhisperPlugin.java"
 JNI_PKG="$(printf '%s' "$PKG" | tr '.' '/')"
 sed -i "s|__PACKAGE_SLASH__|$JNI_PKG|g" "$NATIVE_DIR/whisper_jni.cpp"
