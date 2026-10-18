@@ -147,11 +147,9 @@ export default function Record({ folders, items = [], onOpen }) {
       await patchInterview(id, { status: "recorded" });
       setCandidate(""); setPosition(""); setCaseNumber("");
       const s = getSettings();
-      if (s.transcribeProvider === "offline") {
-        processInterview(id, { transcribeOnly: !s.autoProcess });
-      } else if (s.autoProcess && analysisKey(s)) {
-        processInterview(id);
-      }
+      // Transcription must always start after recording, even when automatic AI analysis is disabled.
+      // autoProcess controls analysis only; it must not disable transcription.
+      processInterview(id, { transcribeOnly: !s.autoProcess });
       onOpen(id);
     }
     idRef.current = "";
