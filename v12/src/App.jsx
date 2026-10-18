@@ -22,6 +22,9 @@ async function recover() {
       if (!segs.length) { await patchInterview(i.id, { status: "error", error: "ضبط ناقص بود و صدایی ذخیره نشده بود.", failedAt: "transcribe" }); continue; }
       await patchInterview(i.id, { status: "recorded", title: i.title + " (بازیابی‌شده)" });
       processInterview(i.id, { transcribeOnly: !s.autoProcess });
+    } else if (i.status === "recorded" && !i.transcript) {
+      // Resume legacy/stale recordings that were saved but never successfully transcribed.
+      processInterview(i.id, { transcribeOnly: !s.autoProcess });
     } else if (i.status === "transcribing" || i.status === "analyzing") processInterview(i.id);
   }
 }
