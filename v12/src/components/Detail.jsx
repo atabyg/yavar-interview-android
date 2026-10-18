@@ -89,6 +89,13 @@ export default function Detail({ iv, onBack }) {
                 ))}
               </div>
             )}
+            {Array.isArray(a.transcriptWarnings) && a.transcriptWarnings.length > 0 && (
+              <div className="card">
+                <h4>ابهام‌های متن و هشدارهای تشخیص</h4>
+                <ul className="l">{a.transcriptWarnings.map((warning, k) => <li key={k}>{warning}</li>)}</ul>
+                <div className="mut" style={{ marginTop: 6, lineHeight: 1.8 }}>این بخش‌ها برای جلوگیری از حدس‌زدن ثبت شده‌اند؛ در صورت نیاز فایل صوتی را گوش کنید.</div>
+              </div>
+            )}
             <div className="card"><h4>شایستگی‌ها</h4>
               {a.competencies.map((c) => (
                 <div key={c.name} style={{ marginBottom: 10 }}>
@@ -110,7 +117,7 @@ export default function Detail({ iv, onBack }) {
         )}
 
         {iv.transcript && (
-          <div className="card"><div className="row"><h4 className="grow">متن مصاحبه</h4>
+          <div className="card"><div className="row"><h4 className="grow">متن خام تشخیص گفتار (سند اصلی)</h4>
             <button className="ib" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(iv.transcript); toast("کپی شد"); }}><Copy size={16} /></button></div>
             <div className="tx" style={full ? { maxHeight: "none" } : {}}>{iv.transcript}</div>
             <button className="btn alt sm" style={{ marginTop: 8 }} onClick={() => setFull(!full)}>{full ? "کمتر" : "نمایش کامل"}</button>
