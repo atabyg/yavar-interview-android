@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Star, Trash2, FileText, FileSpreadsheet, RefreshCw, Share2, Check, Loader2, Copy, Mic, Sparkles } from "lucide-react";
-import { deleteInterview, getAudioSegments, patchInterview } from "../db";
+import { deleteInterview, getAudioSegments, getInterview, patchInterview } from "../db";
 import { fileBase, fmtDate, fmtDur, interviewExcel, interviewPdf } from "../export";
 import { saveFile } from "../native";
 import { getSettings } from "../settings";
@@ -17,6 +17,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
   const [segs, setSegs] = useState([]);
   const [pdf, setPdf] = useState(-1);
   const [full, setFull] = useState(false);
+  const [offlineBusy, setOfflineBusy] = useState(false);
   const [f, setF] = useState({ candidate: iv.candidate, position: iv.position, title: iv.title });
 
   useEffect(() => {
@@ -36,6 +37,45 @@ export default function Detail({ iv, onBack, onImportResult }) {
   }
   async function doXlsx() { try { await saveFile(interviewExcel(iv), fileBase(iv) + ".xlsx"); } catch (e) { toast("ساخت Excel ناموفق بود."); } }
   async function doExternalAI() { try { await shareExchangePack([iv], dayKey(iv.createdAt)); toast("فایل صوتی و پرامپت کدگذاری‌شده برای اشتراک‌گذاری آماده شد."); } catch (e) { toast("ساخت بستهٔ صوتی/پرامپت ناموفق بود: " + String((e && e.message) || e)); } }
+
+  async function doOfflineTranscribe() {
+    if (offlineBusy || working) return;
+    if (!(await ask("متن فعلی حذف نمی‌شود؛ در سابقه نگه داشته می‌شود. صوت اصلی با Whisper آفلاین دوباره تبدیل خواهد شد و تحلیل قبلی تا تحلیل مجدد کنار گذاشته می‌شود.", "تبدیل مجدد آفلاین"))) return;
+    setOfflineBusy(true);
+    try {
+      const oldText = String(iv.transcript || "").trim();
+      const history = [...(Array.isArray(iv.transcriptHistory) ? iv.transcriptHistory : [])];
+      if (oldText) history.unshift({
+        transcript: oldText,
+        savedAt: Date.now(),
+        provider: iv.transcribeProviderUsed || "منبع نامشخص"
+      });
+      await patchInterview(iv.id, {
+        transcript: "",
+        segTexts: [],
+        transcribeProviderUsed: "",
+        transcriptHistory: history.slice(0, 5),
+        analysis: null,
+        status: "recorded",
+        step: "",
+        failedAt: null,
+        error: ""
+      });
+      await processInterview(iv.id, {
+        transcribeOnly: true,
+        transcribeProvider: "offline",
+        forceTranscribe: true,
+        forceFreshTranscription: true
+      });
+      const result = await getInterview(iv.id);
+      if ((result && result.transcript || "").trim()) toast("تبدیل آفلاین پایان یافت؛ متن جدید در پرونده ذخیره شد.");
+      else toast("تبدیل آفلاین کامل نشد: " + String((result && result.error) || "وضعیت پرونده و مدل را بررسی کنید."));
+    } catch (error) {
+      toast("تبدیل آفلاین آغاز نشد: " + String((error && error.message) || error));
+    } finally {
+      setOfflineBusy(false);
+    }
+  }
   const ext = /mp4/.test(iv.mime) ? "m4a" : /ogg/.test(iv.mime) ? "ogg" : "webm";
 
   return (
@@ -119,6 +159,18 @@ export default function Detail({ iv, onBack, onImportResult }) {
           </>
         )}
 
+        {Array.isArray(iv.transcriptHistory) && iv.transcriptHistory.length > 0 && (
+          <div className="card">
+            <h4>سابقهٔ متن‌های قبلی (برای جلوگیری از ازدست‌رفتن داده)</h4>
+            {iv.transcriptHistory.map((entry, index) => (
+              <details key={index} style={{ marginTop: 8 }}>
+                <summary style={{ cursor: "pointer" }}>{fmtDate(entry.savedAt || iv.createdAt)} — {entry.provider || "منبع نامشخص"}</summary>
+                <div className="tx" style={{ marginTop: 8, maxHeight: 260 }}>{entry.transcript || ""}</div>
+              </details>
+            ))}
+          </div>
+        )}
+
         {iv.transcript && (
           <div className="card"><div className="row"><h4 className="grow">متن خام تشخیص گفتار (سند اصلی)</h4>
             <button className="ib" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(iv.transcript); toast("کپی شد"); }}><Copy size={16} /></button></div>
@@ -134,6 +186,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
             <div className="row" style={{ flexWrap: "wrap", marginTop: 10 }}>
               {segs.map((b, k) => <button key={k} className="btn line sm" onClick={() => saveFile(b, `${fileBase(iv)}-${k + 1}.${ext}`)}><Share2 size={14} /> {segs.length > 1 ? "ارسال بخش " + fa(k + 1) : "ارسال صوت"}</button>)}
               <button className="btn sm" onClick={doExternalAI}><Share2 size={14} /> ارسال صوت + پرامپت کدگذاری‌شده</button>
+              <button className="btn alt sm" disabled={offlineBusy || working} onClick={doOfflineTranscribe}><RefreshCw size={14} /> {offlineBusy ? "در حال تبدیل آفلاین…" : "تبدیل مجدد با Whisper آفلاین"}</button>
               <button className="btn alt sm" onClick={onImportResult}><FileText size={14} /> ثبت نتیجهٔ هوش مصنوعی بیرونی</button>
             </div>
           </div>

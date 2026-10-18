@@ -19,11 +19,12 @@ export async function processInterview(id, options = {}) {
     let iv = await getInterview(id);
     if (!iv) throw new Error("پروندهٔ مصاحبه پیدا نشد.");
 
-    if (!iv.transcript) {
+    if (!iv.transcript || options.forceTranscribe === true) {
       const segs = await getAudioSegments(id);
       if (!segs.length) throw new Error("فایل صوتی پیدا نشد.");
 
-      if (s.transcribeProvider === "offline") {
+      const transcribeProvider = options.transcribeProvider || s.transcribeProvider;
+      if (transcribeProvider === "offline") {
         // Publish progress before native plugin/model checks so the UI cannot appear stuck on "recorded".
         await patchInterview(id, {
           status: "transcribing",
@@ -40,7 +41,7 @@ export async function processInterview(id, options = {}) {
           throw new Error("مدل آفلاین همراه برنامه آماده نشد. فضای خالی گوشی را بررسی کنید و نسخهٔ کامل یاور را دوباره نصب کنید.");
         }
         const priorProvider = iv.transcribeProviderUsed || "";
-        const texts = iv.segTexts && priorProvider === "offline" ? [...iv.segTexts] : [];
+        const texts = !options.forceFreshTranscription && iv.segTexts && priorProvider === "offline" ? [...iv.segTexts] : [];
         for (let i = texts.length; i < segs.length; i++) {
           await patchInterview(id, {
             status: "transcribing",
@@ -59,10 +60,10 @@ export async function processInterview(id, options = {}) {
           error: ""
         });
       } else {
-        const key = transcriptionKey(s);
+        const key = transcriptionKey(transcribeProvider === s.transcribeProvider ? s : { ...s, transcribeProvider });
         if (!key) throw new Error("برای تبدیل صوت ابری، کلید ارائه‌دهندهٔ انتخاب‌شده را در تنظیمات وارد کنید.");
         const previousProvider = iv.transcribeProviderUsed || "";
-        const texts = iv.segTexts && previousProvider === s.transcribeProvider ? [...iv.segTexts] : [];
+        const texts = !options.forceFreshTranscription && iv.segTexts && previousProvider === transcribeProvider ? [...iv.segTexts] : [];
         for (let i = texts.length; i < segs.length; i++) {
           await patchInterview(id, {
             status: "transcribing",
@@ -70,7 +71,7 @@ export async function processInterview(id, options = {}) {
             step: "تبدیل صوت به متن (" + (i + 1) + " از " + segs.length + ")"
           });
           texts.push(await transcribe(segs[i], "part" + (i + 1) + "." + ext(iv.mime), {
-            provider: s.transcribeProvider, key, model: s.transcribeModel
+            provider: transcribeProvider, key, model: s.transcribeModel
           }));
           await patchInterview(id, { segTexts: texts, transcribeProviderUsed: s.transcribeProvider }, true);
         }
