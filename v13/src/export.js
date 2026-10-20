@@ -5,7 +5,7 @@ import { COMPETENCIES } from "./openai";
 export const fmtDate = (t) => new Date(t).toLocaleDateString("fa-IR-u-ca-persian", { year: "numeric", month: "long", day: "numeric" });
 export const fmtTime = (t) => new Date(t).toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" });
 export const fmtDur = (s) => { s = Math.max(0, Math.floor(s || 0)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + ":" : "") + String(m).padStart(h ? 2 : 1, "0") + ":" + String(x).padStart(2, "0"); };
-export const fileBase = (iv) => ("مصاحبه-" + (iv.candidate || iv.title || iv.id)).replace(/[\\/:*?"<>|\s]+/g, "-");
+export const fileBase = (iv) => ("پرونده-ارجاع-" + (iv.candidate || iv.title || iv.id)).replace(/[\\/:*?"<>|\s]+/g, "-");
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 /* ------------------------------ Excel ------------------------------ */
@@ -25,7 +25,7 @@ const toBlob = (wb) => new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array
 export function interviewExcel(iv) {
   const a = iv.analysis || {};
   const info = [
-    ["گزارش مصاحبه", ""], ["نام متقاضی", iv.candidate || "-"], ["سمت", iv.position || "-"], ["مصاحبه‌گر", iv.interviewer || "-"],
+    ["گزارش ارجاع مددجو", ""], ["نام متقاضی", iv.candidate || "-"], ["سمت", iv.position || "-"], ["مصاحبه‌گر", iv.interviewer || "-"],
     ["تاریخ", fmtDate(iv.createdAt)], ["مدت", fmtDur(iv.durationSec)], ["امتیاز کل (از ۱۰۰)", a.overall ?? "-"], ["نتیجه", a.verdict || "-"], ["خلاصه", a.summary || "-"],
   ];
   const comps = [["شایستگی", "امتیاز (از ۱۰)", "توضیح"], ...(a.competencies || []).map((c) => [c.name, c.score, c.note])];
@@ -36,7 +36,8 @@ export function interviewExcel(iv) {
   const clean = [["متن بازبینی‌شده برای فرم‌ها"], ...String(a.cleanTranscript || "").split(/\n+/).map((p) => [p])];
   const qa = [["گویندهٔ سؤال", "پرسش ثبت‌شده", "گویندهٔ پاسخ", "پاسخ ثبت‌شده", "تطبیق با فرم", "اطمینان", "شاهد"], ...(a.qaPairs || []).map((q) => [q.questionSpeaker || "نامشخص", q.question || "", q.answerSpeaker || "نامشخص", q.answer || "", q.matchedQuestion || "", q.confidence || "پایین", q.evidence || ""])];
   const warnings = [["ابهام‌ها و هشدارهای تشخیص"], ...(a.transcriptWarnings || []).map((warning) => [warning])];
-  return toBlob(book([["خلاصه", sheet(info, [22, 80])], ["شایستگی‌ها", sheet(comps, [26, 14, 70])], ["قوت و ضعف", sheet(lists, [38, 38, 38, 38])], ["متن خام", sheet(tr, [120])], ["متن بازبینی‌شده", sheet(clean, [120])], ["پرسش و پاسخ", sheet(qa, [20, 60, 20, 70, 50, 12, 50])], ["هشدارهای متن", sheet(warnings, [120])]]));
+  const formRows = [["شناسهٔ داخلی", "فرم", "پرسش / فیلد", "پاسخ پیشنهادی", "وضعیت", "اطمینان", "شاهد"], ...(a.formAnswers || []).map((x) => [x.code || "", x.formId || "", x.question || "", x.answer || "", x.answered ? "پیشنهاد دارد؛ تأییدنشده" : "ثبت نشده در متن", x.confidence || "پایین", x.evidence || ""])];
+  return toBlob(book([["خلاصه", sheet(info, [22, 80])], ["شایستگی‌ها", sheet(comps, [26, 14, 70])], ["قوت و ضعف", sheet(lists, [38, 38, 38, 38])], ["متن خام", sheet(tr, [120])], ["متن بازبینی‌شده", sheet(clean, [120])], ["پرسش و پاسخ", sheet(qa, [20, 60, 20, 70, 50, 12, 50])], ["هشدارهای متن", sheet(warnings, [120])], ["پیش‌نویس فرم ارجاع", sheet(formRows, [18, 10, 70, 80, 24, 12, 70])]]));
 }
 
 export function compareExcel(list) {
@@ -72,7 +73,7 @@ function blocks(iv, org) {
   };
   const li = (x) => x.map((t) => `<li>${esc(t)}</li>`).join("");
   const B = [];
-  B.push(`<div class="hd"><img src="${logo}"/><div><h1>${esc(iv.reportTitle || "گزارش مصاحبهٔ شغلی")}</h1><p>${esc(org)}</p></div></div>
+  B.push(`<div class="hd"><img src="${logo}"/><div><h1>${esc(iv.reportTitle || "گزارش ارجاع مددجو")}</h1><p>${esc(org)}</p></div></div>
   <div class="pad"><div class="meta"><div><b>متقاضی:</b> ${esc(iv.candidate || "-")}</div><div><b>شمارهٔ پرونده:</b> ${esc(iv.caseNumber || "-")}</div><div><b>سمت:</b> ${esc(iv.position || "-")}</div><div><b>مصاحبه‌گر:</b> ${esc(iv.interviewer || "-")}</div><div><b>تاریخ:</b> ${fmtDate(iv.createdAt)} — ${fmtTime(iv.createdAt)}</div><div><b>مدت:</b> ${fmtDur(iv.durationSec)}</div></div></div>`);
   if (iv.reportNote) B.push(`<div class="pad"><div class="sm">${esc(iv.reportNote)}</div></div>`);
   if (a.overall !== null && a.overall !== undefined && a.overall !== "") {
@@ -80,7 +81,7 @@ function blocks(iv, org) {
   }
   if (a.summary) B.push(`<div class="pad"><h2>خلاصه</h2><div>${esc(a.summary)}</div></div>`);
   if (Array.isArray(a.formAnswers) && a.formAnswers.length) {
-    B.push(`<div class="pad"><h2>پاسخ‌های فرم — ${esc(a.formCode || a.formId || "")}</h2></div>`);
+    B.push(`<div class="pad"><h2>پیش‌نویس استخراج‌شده برای فرم‌های ارجاع — تأییدنشده</h2></div>`);
     for (const item of a.formAnswers) {
       B.push(`<div class="pad"><b>${esc(item.code || "")} — ${esc(item.question || "")}</b><div>${esc(item.answered ? (item.answer || "پاسخ نامشخص") : "پاسخ ثبت نشده / EMPTY")}</div>${item.evidence ? `<div class="sm">شاهد: ${esc(item.evidence)}</div>` : ""}${item.confidence ? `<div class="sm">اطمینان: ${esc(item.confidence)}</div>` : ""}</div>`);
     }
@@ -88,7 +89,7 @@ function blocks(iv, org) {
   if (a.competencies.length) B.push(`<div class="pad"><h2>شایستگی‌ها</h2>${a.competencies.map((c) => `<div class="cr"><div class="n">${esc(c.name)}</div><div class="bar"><i style="width:${Number(c.score || 0) * 10}%"></i></div><div class="s">${esc(c.score ?? "—")}</div></div><div class="nt">${esc(c.note || "")}</div>`).join("")}</div>`);
   if (a.cleanTranscript) {
     const cleaned = String(a.cleanTranscript).split(/\\n+/).filter(Boolean);
-    B.push(`<div class="pad"><h2>متن بازبینی‌شده برای فرم‌ها (پیشنهاد هوش مصنوعی)</h2></div>`);
+    B.push(`<div class="pad"><h2>متن بازبینی‌شده برای فرم‌های ارجاع (پیشنهاد هوش مصنوعی)</h2></div>`);
     let cleanChunk = "";
     for (const p of cleaned) { if ((cleanChunk + p).length > 700 && cleanChunk) { B.push(`<div class="pad tx">${esc(cleanChunk)}</div>`); cleanChunk = ""; } cleanChunk += (cleanChunk ? "\\n" : "") + p; }
     if (cleanChunk) B.push(`<div class="pad tx">${esc(cleanChunk)}</div>`);
@@ -111,7 +112,7 @@ function blocks(iv, org) {
     for (const p of paras) { if ((cur + p).length > 700 && cur) { B.push(`<div class="pad tx">${esc(cur)}</div>`); cur = ""; } cur += (cur ? "\n" : "") + p; }
     if (cur) B.push(`<div class="pad tx">${esc(cur)}</div>`);
   }
-  B.push(`<div class="pad"><div class="ft">این گزارش را هوش مصنوعی از روی متن مصاحبه تولید کرده و فقط ابزار کمک‌تصمیم است؛ تصمیم نهایی با کارشناس انسانی است.</div></div>`);
+  B.push(`<div class="pad"><div class="ft">این گزارش پیش‌نویس کمکی است. پاسخ‌های استخراج‌شده از گفت‌وگو باید با فایل صوتی و فرم مرجع بازبینی شوند؛ امتیازدهی رسمی، مشاهدهٔ رفتاری، رضایت، امضا، سطح نهایی و تصمیم ارجاع فقط با کارشناس مسئول است.</div></div>`);
   return B;
 }
 
