@@ -36,13 +36,13 @@ test("form specs expose stable codes for quick, 12 and 24 question forms", () =>
   assert.equal(formSpec("full").items[23].code, "Q24-24");
 });
 
-test("prompt carries record identity, audio file name, every code and the formulas", () => {
+test("prompt carries record identity, audio file name, referral form fields and plain-text interoperability", () => {
   const p = buildExchangePrompt([rec], {});
   assert.match(p, /RECORD_ID: rec1/);
   assert.match(p, /DATE_JALALI: 1405\/07\/26/);
-  assert.match(p, /FORM: Q12/);
+  assert.match(p, /FORM: REFERRAL/);
   assert.match(p, /yavar-rec1-1\.webm/);
-  assert.match(p, /Q12-12\.CONF:/);
+  assert.match(p, /F02-C15\.CONF:/);\n  assert.match(p, /F01-A01/);
   assert.match(p, /C6\.NOTE:/);
   assert.match(p, /COVERAGE/);
   assert.match(p, /OVERALL/);
@@ -75,6 +75,32 @@ test("parser reads coded answers, Persian digits, EMPTY markers and calculates t
   assert.equal(r.stats.verdict, "پیشنهاد استخدام");
   assert.deepEqual(r.strengths, ["الف", "ب"]);
   assert.equal(r.hasContent, true);
+});
+
+test("referral-only results preserve evidence and never invent official scoring", () => {
+  const rows = parseResults([
+    "#YAVAR_RESULT v1",
+    "RECORD_ID: rec1",
+    "CASE_NUMBER: ۱۲۳۴۵۶",
+    "DATE_JALALI: ۱۴۰۵/۰۷/۲۶",
+    "FORM: REFERRAL",
+    "F01-A01: مراجعهٔ دوره‌ای دوشنبه",
+    "F01-A01.EVIDENCE: دوشنبه باید به دادگاه بروم",
+    "F01-A01.CONF: HIGH",
+    "F02-C01: ابتدا به مددکار تماس می‌گیرم",
+    "F02-C01.EVIDENCE: با مددکار تماس می‌گیرم",
+    "F02-C01.CONF: MEDIUM",
+    "#END_RESULT"
+  ].join("\n"));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].referralAnswers.length, 21);
+  assert.equal(rows[0].referralAnswers.find((a) => a.code === "F01-A01").answered, true);
+  assert.equal(rows[0].hasContent, true);
+  const analysis = buildPatch(rec, rows[0]).analysis;
+  assert.equal(analysis.overall, null);
+  assert.equal(analysis.verdict, "پیش‌نویس فرم ارجاع — تأییدنشده");
+  assert.equal(analysis.competencies.length, 0);
+  assert.equal(analysis.formAnswers.length, 21);
 });
 
 test("overall is not invented when a competency score is missing", () => {
