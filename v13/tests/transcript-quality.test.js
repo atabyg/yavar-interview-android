@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { transcriptGuidance, sanitizeQaPairs } from "../src/transcript-quality.js";
+import { transcriptGuidance, sanitizeQaPairs, transcriptStageError } from "../src/transcript-quality.js";
 
 test("smart cleanup asks the model not to invent words and to exclude ambient speech", () => {
   const prompt = transcriptGuidance(true);
