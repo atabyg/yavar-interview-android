@@ -95,7 +95,7 @@ export async function processInterview(id, options = {}) {
       await patchInterview(id, {
         status: "transcribed",
         error: "",
-        step: "متن آماده است؛ برای تحلیل و امتیازدهی هوش مصنوعی، کلید سرویس تحلیل را در تنظیمات وارد کنید."
+        step: "متن آماده است؛ برای استخراج پیش‌نویس فرم و شواهد گفت‌وگو (بدون امتیاز رسمی)، کلید سرویس تحلیل را در تنظیمات وارد کنید."
       });
       return;
     }
