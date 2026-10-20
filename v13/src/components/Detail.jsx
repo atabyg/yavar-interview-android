@@ -57,7 +57,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
     catch (e) { toast("ساخت PDF ناموفق بود."); } finally { setPdf(-1); }
   }
   async function doXlsx() { try { await saveFile(interviewExcel(iv), fileBase(iv) + ".xlsx"); } catch (e) { toast("ساخت Excel ناموفق بود."); } }
-  async function doExternalAI() { try { await shareExchangePack([iv], dayKey(iv.createdAt)); toast("فایل صوتی و پرامپت کدگذاری‌شده برای اشتراک‌گذاری آماده شد."); } catch (e) { toast("ساخت بستهٔ صوتی/پرامپت ناموفق بود: " + String((e && e.message) || e)); } }
+  async function doExternalAI() { try { await shareExchangePack([iv], dayKey(iv.createdAt)); toast("فایل صوتی و پرامپت متنیِ ساده برای اشتراک‌گذاری آماده شد؛ پیش از ارسال، اطلاعات حساس را بررسی کنید."); } catch (e) { toast("ساخت بستهٔ صوتی/پرامپت ناموفق بود: " + String((e && e.message) || e)); } }
 
   async function doOfflineTranscribe() {
     if (offlineBusy || working) return;
