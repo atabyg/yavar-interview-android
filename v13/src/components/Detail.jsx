@@ -144,6 +144,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
           <div className="steps">{STEPS.map(([n, Ic], k) => (
             <div key={n} className={"step " + (k < cur ? "done" : k === cur ? "cur" : "")}><span>{k < cur ? <Check size={14} /> : k === cur && working ? <Loader2 size={14} className="spin" /> : <Ic size={14} />}</span>{n}</div>
           ))}</div>
+          {a && a.analysisStaleAfterReanalysisFailure && <div style={{ color: "var(--terra)", background: "var(--card)", border: "1px solid var(--line)", borderRadius: 10, padding: 10, marginTop: 8, lineHeight: 1.8, fontSize: 13 }}>تحلیل مجدد کامل نشد؛ آخرین تحلیل موفق قبلی حفظ شده و ممکن است تازه نباشد. خطا را برطرف کنید و دوباره تلاش کنید. {a.reanalysisFailureMessage || ""}</div>}
           {(working || (iv.status === "transcribed" && iv.step)) && <div className="mut" style={{ textAlign: "center", lineHeight: 1.9 }}>{iv.step}</div>}
           {(iv.status === "recorded" || (iv.status === "transcribed" && !iv.step)) && !(getSettings().apiKeys && getSettings().apiKeys[getSettings().analyzeProvider]) && <div className="mut" style={{ textAlign: "center", lineHeight: 1.9 }}>متن صوت محفوظ است؛ برای استخراج معنایی پیش‌نویس فرم، کلید سرویس تحلیل را در «تنظیمات» وارد کنید. امتیاز رسمی به‌صورت خودکار تولید نمی‌شود.</div>}
           {(iv.status === "error" || iv.status === "recorded" || iv.status === "transcribed") && (
