@@ -174,6 +174,7 @@ function interpretBlock(f) {
   if (stats.overall === null && comps.some((c) => c.score !== null)) warnings.push("همهٔ شش نمرهٔ C1 تا C6 کامل نبود؛ امتیاز کل محاسبه نشد.");
   const row = {
     setId, formCode: spec.prefix, label: spec.label,
+    isReferralFormat: /^REFERRAL|F01|F02/i.test(String(f.FORM || "")),
     recordId: oneLine(f.RECORD_ID),
     caseNumber: normalizeDigits(f.CASE_NUMBER || "").replace(/\D/g, "").slice(0, 6),
     date: normalizeDate(f.DATE_JALALI),
@@ -219,7 +220,7 @@ export function matchRecord(row, items) {
 
 // ------------------------------------------------------------------ result -> interview patch
 export function buildAnalysis(row) {
-  const hasReferral = Array.isArray(row.referralAnswers) && row.referralAnswers.some((a) => a.answered);
+  const hasReferral = !!row.isReferralFormat || (Array.isArray(row.referralAnswers) && row.referralAnswers.some((a) => a.answered));
   const referralAnswers = hasReferral ? row.referralAnswers : row.answers;
   return {
     summary: row.summary,
