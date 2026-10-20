@@ -1,13 +1,10 @@
-// Face-ID: fully offline face -> case number mapping.
-// IMPORTANT: a face never produces bit-identical data twice (light, angle, camera noise).
-// So we do NOT hash the face. We enroll an embedding once, then MATCH new scans against
-// enrolled ones by cosine similarity. A match returns the SAME stored case number every time;
-// no match creates a new one. The QR encodes that case number (+ checksum), not the face.
+// Face-ID: offline face -> case number mapping, encrypted at rest.
+// A face never yields bit-identical data twice, so we ENROLL an embedding once and MATCH later scans
+// (cosine similarity). A match returns the SAME stored case number every time; no match issues a new one.
 import { newCaseNumber } from "./daily";
 
-const KEY = "yavar.faceid.v1";
-export const MATCH_THRESHOLD = 0.62;   // cosine similarity; tune with real tests on the target phone
-export const AMBIGUOUS_MARGIN = 0.04;  // best vs second-best closer than this => ask user to confirm
+export const MATCH_THRESHOLD = 0.62;   // tune on the real phone with real people
+export const AMBIGUOUS_MARGIN = 0.04;
 
 export function normalize(v) {
   let s = 0; for (const x of v) s += x * x;
@@ -17,7 +14,7 @@ export function normalize(v) {
 export function cosine(a, b) {
   if (!a || !b || a.length !== b.length) return -1;
   let d = 0; for (let i = 0; i < a.length; i++) d += a[i] * b[i];
-  return d; // inputs are L2-normalized
+  return d;
 }
 export function averageEmbeddings(list) {
   const out = new Array(list[0].length).fill(0);
@@ -25,42 +22,77 @@ export function averageEmbeddings(list) {
   return normalize(out);
 }
 
-export function loadFaces() {
-  try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { return []; }
+// ---------- encrypted storage (AES-GCM; non-extractable key kept in IndexedDB) ----------
+const DB = "yavar-faceid", ST = "kv";
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(ST);
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
 }
-function saveFaces(f) { localStorage.setItem(KEY, JSON.stringify(f)); }
-export function forgetFace(caseNumber) { saveFaces(loadFaces().filter((f) => f.caseNumber !== caseNumber)); }
-export function forgetAllFaces() { saveFaces([]); }
+async function kvGet(k) { const d = await idb(); return new Promise((res, rej) => { const q = d.transaction(ST).objectStore(ST).get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+async function kvSet(k, v) { const d = await idb(); return new Promise((res, rej) => { const q = d.transaction(ST, "readwrite").objectStore(ST).put(v, k); q.onsuccess = () => res(); q.onerror = () => rej(q.error); }); }
+async function cryptoKey() {
+  let k = await kvGet("key");
+  if (!k) { k = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]); await kvSet("key", k); }
+  return k;
+}
+export async function loadFaces() {
+  const rec = await kvGet("faces");
+  if (!rec) return [];
+  try {
+    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: rec.iv }, await cryptoKey(), rec.ct);
+    return JSON.parse(new TextDecoder().decode(pt));
+  } catch (e) { return []; }
+}
+async function saveFaces(faces) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await cryptoKey(), new TextEncoder().encode(JSON.stringify(faces)));
+  await kvSet("faces", { iv, ct });
+}
+export async function forgetFace(caseNumber) { await saveFaces((await loadFaces()).filter((f) => f.caseNumber !== caseNumber)); }
+export async function forgetAllFaces() { await saveFaces([]); }
 
-// Returns { status: "match"|"ambiguous"|"new", caseNumber?, score?, candidates? }
-export function findMatch(embedding, faces = loadFaces()) {
+// ---------- matching ----------
+export function findMatch(embedding, faces) {
   const q = normalize(embedding);
   const scored = faces.map((f) => ({ caseNumber: f.caseNumber, score: cosine(q, f.embedding) })).sort((a, b) => b.score - a.score);
   if (!scored.length || scored[0].score < MATCH_THRESHOLD) return { status: "new" };
-  if (scored[1] && scored[0].score - scored[1].score < AMBIGUOUS_MARGIN && scored[1].score >= MATCH_THRESHOLD)
+  if (scored[1] && scored[1].score >= MATCH_THRESHOLD && scored[0].score - scored[1].score < AMBIGUOUS_MARGIN)
     return { status: "ambiguous", candidates: scored.slice(0, 3) };
   return { status: "match", caseNumber: scored[0].caseNumber, score: scored[0].score };
 }
-
-// Enroll a new person (several frames averaged) and issue a never-repeated 6-digit case number.
-export function enroll(embeddings, usedNumbers = []) {
-  const faces = loadFaces();
-  const taken = [...usedNumbers, ...faces.map((f) => f.caseNumber)];
-  const caseNumber = newCaseNumber(taken);
+export async function enroll(embeddings, usedNumbers = []) {
+  const faces = await loadFaces();
+  const caseNumber = newCaseNumber([...usedNumbers, ...faces.map((f) => f.caseNumber)]);
   faces.push({ caseNumber, embedding: averageEmbeddings(embeddings.map(normalize)), createdAt: Date.now() });
-  saveFaces(faces);
+  await saveFaces(faces);
   return caseNumber;
 }
-// Improve an existing record after a confirmed match (slow moving average keeps it stable).
-export function refine(caseNumber, embedding) {
-  const faces = loadFaces();
+export async function refine(caseNumber, embeddings) {
+  const faces = await loadFaces();
   const f = faces.find((x) => x.caseNumber === caseNumber);
   if (!f) return;
-  f.embedding = normalize(f.embedding.map((x, i) => x * 0.9 + normalize(embedding)[i] * 0.1));
-  saveFaces(faces);
+  const avg = averageEmbeddings(embeddings.map(normalize));
+  f.embedding = normalize(f.embedding.map((x, i) => x * 0.9 + avg[i] * 0.1));
+  await saveFaces(faces);
 }
 
-// QR payload: case number + 2-digit checksum so a scan can be validated offline.
+// ---------- portable vector (so the same vector can be moved/imported and matched) ----------
+// "YFV1:" + base64 of int8-quantized unit vector. Produced ONLY by the app's own model.
+export function toVectorString(e) {
+  const q = Int8Array.from(normalize(e), (x) => Math.max(-127, Math.min(127, Math.round(x * 127))));
+  let s = ""; q.forEach((b) => (s += String.fromCharCode(b & 255)));
+  return "YFV1:" + btoa(s);
+}
+export function fromVectorString(t) {
+  if (!/^YFV1:/.test(t || "")) return null;
+  const s = atob(t.slice(5));
+  return normalize(Array.from(s, (c) => ((c.charCodeAt(0) << 24) >> 24) / 127));
+}
+
+// ---------- QR payload ----------
 export function checksum(caseNumber) { return String([...caseNumber].reduce((a, c) => (a * 7 + +c) % 97, 11)).padStart(2, "0"); }
 export function qrPayload(caseNumber) { return `YAVAR:${caseNumber}:${checksum(caseNumber)}`; }
 export function parseQr(text) {
