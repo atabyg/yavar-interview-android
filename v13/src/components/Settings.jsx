@@ -116,7 +116,7 @@ export default function Settings({ storage, onChange }) {
         <select className="inp" value={s.analyzeModel} onChange={(e) => upd({ analyzeModel: e.target.value })}>
           {(modelLists[s.analyzeProvider]?.length ? modelLists[s.analyzeProvider] : (PROVIDERS[s.analyzeProvider] || PROVIDERS.groq).models).map((m) => <option value={m} key={m}>{m}</option>)}
         </select>
-        <div className="mut" style={{ marginTop: 8, lineHeight: 1.8 }}>فهرست شامل سرویس‌های رایگان محدود است؛ اعتبار و سهمیه ممکن است بر اساس حساب، منطقه و سیاست جاری تغییر کند. برای Hugging Face اعتبار رایگان شروع محدود است و پس از اتمام آن باید درخواست خطا بدهد مگر اینکه اعتبار خریده باشید. برای سرویس‌های دیگر نیز محدودیت و صورتحساب حساب را کنترل کنید. متن مصاحبه برای تحلیل به سرور ارائه‌دهنده ارسال می‌شود؛ اطلاعات شناسایی یا محرمانه را فقط با مجوز مناسب ارسال کنید.</div>
+        <div className="mut" style={{ marginTop: 8, lineHeight: 1.8 }}>فهرست شامل سرویس‌های رایگان محدود است؛ اعتبار و سهمیه ممکن است بر اساس حساب، منطقه و سیاست جاری تغییر کند. برای Hugging Face اعتبار رایگان شروع محدود است و پس از اتمام آن باید درخواست خطا بدهد مگر اینکه اعتبار خریده باشید. برای سرویس‌های دیگر نیز محدودیت و صورتحساب حساب را کنترل کنید. متن مصاحبه برای تحلیل به سرور ارائه‌دهنده ارسال می‌شود.</div>
       </div>
 
       <div className="card">
