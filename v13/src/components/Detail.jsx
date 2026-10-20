@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, Star, Trash2, FileText, FileSpreadsheet, RefreshCw, Share2, Check, Loader2, Copy, Mic, Sparkles } from "lucide-react";
 import { deleteInterview, getAudioSegments, getInterview, patchInterview } from "../db";
 import { fileBase, fmtDate, fmtDur, interviewExcel, interviewPdf } from "../export";
-import { saveFile } from "../native";
+import { saveFile, saveFiles } from "../native";
 import { getSettings } from "../settings";
 import { processInterview, reanalyze } from "../pipeline";
 import { ask, fa, scoreColor, size, toast } from "../ui";
@@ -19,6 +19,27 @@ export default function Detail({ iv, onBack, onImportResult }) {
   const [full, setFull] = useState(false);
   const [offlineBusy, setOfflineBusy] = useState(false);
   const [f, setF] = useState({ candidate: iv.candidate, position: iv.position, title: iv.title });
+  const [autoExportStarted, setAutoExportStarted] = useState(false);
+
+  useEffect(() => {
+    if (autoExportStarted || iv.status !== "done" || !iv.analysis || !Array.isArray(iv.analysis.formAnswers) || !getSettings().autoExportAfterAnalysis || iv.autoExportedAt) return;
+    setAutoExportStarted(true);
+    (async () => {
+      try {
+        const pdfBlob = await interviewPdf(iv, getSettings().org);
+        const excelBlob = interviewExcel(iv);
+        await saveFiles([
+          { blob: pdfBlob, name: fileBase(iv) + ".pdf" },
+          { blob: excelBlob, name: fileBase(iv) + ".xlsx" }
+        ]);
+        await patchInterview(iv.id, { autoExportedAt: Date.now() });
+        toast("پیش‌نویس فرم ارجاع به‌صورت خودکار در PDF و Excel ذخیره شد.");
+      } catch (error) {
+        toast("ذخیرهٔ خودکار فایل‌ها ناموفق بود؛ از دکمه‌های PDF و Excel استفاده کنید.");
+      }
+    })();
+  }, [iv.id, iv.status, iv.analysis, iv.autoExportedAt, autoExportStarted]);
+
 
   useEffect(() => {
     let off = false;
