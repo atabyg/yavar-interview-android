@@ -70,6 +70,7 @@ function splitBlocks(text) {
 
 function parseBlock(lines) {
   const f = {};
+  const duplicateKeys = new Set();
   let last = null;
   let tx = null;
   for (const line of lines) {
