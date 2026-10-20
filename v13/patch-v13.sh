@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# v12 patch: runs after patch-android.sh. Fixes plugin registration order, external file sharing, version 12,
+# v13 patch: idempotent final Android patch; owns the only versionCode/versionName assignment.
 # (3) stable signing key so a new APK installs OVER an older v11+ install, (4) clean uninstall (no auto-backup/restore leftovers).
 set -euo pipefail
 MANIFEST=android/app/src/main/AndroidManifest.xml
@@ -27,7 +27,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SharedInboxPlugin.class);
         super.onCreate(savedInstanceState);
         SharedInboxPlugin.setPendingIntent(getIntent());
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
     }
 
     @Override
@@ -173,8 +173,9 @@ PY
 
 
 # 2) Version 12
-sed -i -E "s/versionCode [0-9]+/versionCode 12/; s/versionName ['\"][^'\"]*['\"]/versionName \"12.0.0\"/" "$GRADLE"
-grep -Eq 'versionCode 12' "$GRADLE" || { echo "::error::versionCode 12 not set"; exit 1; }
+sed -i -E "s/versionCode [0-9]+/versionCode 13/; s/versionName ['\"][^'\"]*['\"]/versionName \"13.0.0\"/" "$GRADLE"
+grep -Eq 'versionCode 13' "$GRADLE" || { echo "::error::versionCode 13 not set"; exit 1; }
+ grep -Eq 'versionName [\"'\\''\"]13.0.0[\"'\\''\"]' "$GRADLE" || { echo "::error::versionName 13.0.0 not set"; exit 1; }
 
 # 3) Optional stable signing from GitHub Actions Secrets; never store keystore bytes/passwords in the public repository.
 # Set YAVAR_KEYSTORE_B64, YAVAR_STORE_PASSWORD, YAVAR_KEY_ALIAS and YAVAR_KEY_PASSWORD in repository Actions secrets.

@@ -6,7 +6,6 @@ on:
     paths:
       - 'v13/**'
       - '.github/workflows/build-apk-v13.yml'
-      - 'v12/**'
   workflow_dispatch:
 
 permissions:
@@ -28,22 +27,19 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - name: Prepare isolated v13 build workspace
+      - name: Validate and select v13 source
         run: |
           set -euo pipefail
-          test -f v12/package.json
-          test -f v12/capacitor.config.json
-          test -f v13/docs/AUDIT.md
-          rm -rf "$RUNNER_TEMP/yavar-v13-build"
-          mkdir -p "$RUNNER_TEMP/yavar-v13-build"
-          cp -a v12/. "$RUNNER_TEMP/yavar-v13-build/"
-          echo "BUILD_DIR=$RUNNER_TEMP/yavar-v13-build" >> "$GITHUB_ENV"
-          python3 - "$RUNNER_TEMP/yavar-v13-build/capacitor.config.json" <<'PY'
+          test -f v13/package.json
+          test -f v13/capacitor.config.json
+          test -f v13/patch-v13.sh
+          test -f v13/src/App.jsx
+          echo "BUILD_DIR=$GITHUB_WORKSPACE/v13" >> "$GITHUB_ENV"
+          python3 - v13/capacitor.config.json <<'PY'
           import json, sys
-          p = sys.argv[1]
-          d = json.load(open(p, encoding='utf-8'))
-          assert d.get('appId') == 'com.yavarshahrha.interview', 'Unexpected applicationId; refusing to build'
-          print('applicationId preserved:', d['appId'])
+          d=json.load(open(sys.argv[1],encoding='utf-8'))
+          assert d.get('appId')=='com.yavarshahrha.interview', 'Unexpected applicationId; refusing to build'
+          print('applicationId preserved:',d['appId'])
           PY
       - name: Restore logo and generate Android icons
         run: |
@@ -61,13 +57,12 @@ jobs:
         run: |
           set -euo pipefail
           cd "$BUILD_DIR"
-          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.name='yavar-interview-v13-bootstrap';p.version='13.0.0';fs.writeFileSync('package.json',JSON.stringify(p,null,2))"
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           test -s package-lock.json
           npm ci --no-audit --no-fund
           npm test
           test -s dist/index.html
-      - name: Generate Android project and apply v12 compatibility patches
+      - name: Generate Android project and apply v13 patches
         env:
           YAVAR_KEYSTORE_B64: ${{ secrets.YAVAR_KEYSTORE_B64 }}
           YAVAR_STORE_PASSWORD: ${{ secrets.YAVAR_STORE_PASSWORD }}
@@ -80,20 +75,10 @@ jobs:
           npx capacitor-assets generate --android
           bash patch-android.sh
           npx cap sync android
-          bash patch-v12.sh
-          python3 - android/app/build.gradle <<'PY'
-          import sys
-          p=sys.argv[1]
-          lines=open(p,encoding='utf-8').read().splitlines()
-          for i,line in enumerate(lines):
-              if line.strip().startswith('versionCode '):
-                  lines[i]='        versionCode 13'
-              elif line.strip().startswith('versionName '):
-                  lines[i]='        versionName "13.0.0"'
-          if not any(line.strip()=='versionCode 13' for line in lines): raise SystemExit('versionCode 13 missing')
-          if not any(line.strip()=='versionName "13.0.0"' for line in lines): raise SystemExit('versionName 13.0.0 missing')
-          open(p,'w',encoding='utf-8').write('\n'.join(lines)+'\n')
-          PY
+          bash patch-v13.sh
+          grep -Eq 'versionCode 13' android/app/build.gradle
+          grep -Eq 'versionName "13.0.0"' android/app/build.gradle
+          ! grep -q 'versionCode 9' patch-android.sh
           python3 - android/app/src/main/java <<'PY'
           from pathlib import Path
           import sys
@@ -123,6 +108,22 @@ jobs:
           BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
           "$BT/aapt" dump badging "$APK" | grep -q "package: name='com.yavarshahrha.interview' versionCode='13' versionName='13.0.0'"
           "$BT/apksigner" verify --verbose "$APK"
+          mkdir -p "$RUNNER_TEMP/v13-apk-check/lib"
+          unzip -q "$APK" 'lib/arm64-v8a/*.so' -d "$RUNNER_TEMP/v13-apk-check"
+          READELF="$(find "$ANDROID_NDK_HOME" -type f -name llvm-readelf | head -n1)"
+          test -x "$READELF"
+          python3 - "$READELF" "$RUNNER_TEMP/v13-apk-check/lib/arm64-v8a" <<'PY'
+          import pathlib, subprocess, sys
+          readelf=sys.argv[1]; root=pathlib.Path(sys.argv[2]); libs=list(root.glob('*.so'))
+          if not libs: raise SystemExit('No arm64-v8a native libraries found in APK')
+          for lib in libs:
+              out=subprocess.check_output([readelf,'-lW',str(lib)],text=True)
+              loads=[line.split()[-1] for line in out.splitlines() if line.strip().startswith('LOAD ')]
+              if not loads: raise SystemExit(f'No LOAD segments found: {lib.name}')
+              bad=[x for x in loads if int(x,16)<16384]
+              if bad: raise SystemExit(f'16KB alignment check failed for {lib.name}: {bad}')
+              print('16KB ELF alignment OK:',lib.name)
+          PY
           mkdir -p "$GITHUB_WORKSPACE/artifacts"
           cp "$APK" "$GITHUB_WORKSPACE/artifacts/yavar-interview-v13-bootstrap.apk"
           sha256sum "$GITHUB_WORKSPACE/artifacts/yavar-interview-v13-bootstrap.apk" | tee "$GITHUB_WORKSPACE/artifacts/SHA256SUMS.txt"
@@ -150,7 +151,7 @@ jobs:
         run: |
           set -euo pipefail
           node --version
-          bash -n v12/patch-android.sh
-          bash -n v12/patch-v12.sh
+          bash -n v13/patch-android.sh
+          bash -n v13/patch-v13.sh
           git diff --check
           echo 'Non-blocking runner readiness checks passed.'

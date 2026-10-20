@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 MANIFEST=android/app/src/main/AndroidManifest.xml
-GRADLE=android/app/build.gradle
 
 add_perm() {
   local permission="$1"
@@ -22,9 +21,6 @@ if ! grep -q 'android.speech.RecognitionService' "$MANIFEST"; then
   sed -i '/<\/manifest>/i\    <queries>\n        <intent><action android:name="android.speech.RecognitionService" /></intent>\n    </queries>' "$MANIFEST"
 fi
 sed -i 's#android:allowBackup="true"#android:allowBackup="false"#' "$MANIFEST"
-sed -i -E "s/versionCode [0-9]+/versionCode 9/; s/versionName ['\"][^'\"]*['\"]/versionName \"9.0.0\"/" "$GRADLE"
-grep -Eq 'versionCode 9' "$GRADLE" || { echo "::error::versionCode was not updated"; exit 1; }
-grep -Eq 'versionName [\"'\\''\"]9.0.0[\"'\\''\"]' "$GRADLE" || { echo "::error::versionName was not updated"; exit 1; }
 
 MAIN=$(find android/app/src/main/java -name MainActivity.java | head -n1)
 test -n "$MAIN" || { echo "::error::MainActivity.java not found"; exit 1; }
