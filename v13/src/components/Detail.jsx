@@ -150,7 +150,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
           {(iv.status === "error" || iv.status === "recorded" || iv.status === "transcribed") && (
             <>
               {iv.error && <div style={{ color: "var(--terra)", fontSize: 13, margin: "6px 0", lineHeight: 1.8 }}>{iv.error}</div>}
-              <button className="btn full" onClick={() => processInterview(iv.id)}><RefreshCw size={16} /> {iv.status === "error" ? "تلاش مجدد" : "شروع پردازش"}</button>
+              <button className="btn full" onClick={() => a && a.analysisStaleAfterReanalysisFailure ? reanalyze(iv.id) : processInterview(iv.id)}><RefreshCw size={16} /> {a && a.analysisStaleAfterReanalysisFailure ? "تلاش مجدد برای تحلیل" : iv.status === "error" ? "تلاش مجدد" : "شروع پردازش"}</button>
             </>
           )}
         </div>
