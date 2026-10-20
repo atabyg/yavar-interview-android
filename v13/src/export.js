@@ -36,7 +36,7 @@ export function interviewExcel(iv) {
   const clean = [["متن بازبینی‌شده برای فرم‌ها"], ...String(a.cleanTranscript || "").split(/\n+/).map((p) => [p])];
   const qa = [["گویندهٔ سؤال", "پرسش ثبت‌شده", "گویندهٔ پاسخ", "پاسخ ثبت‌شده", "تطبیق با فرم", "اطمینان", "شاهد"], ...(a.qaPairs || []).map((q) => [q.questionSpeaker || "نامشخص", q.question || "", q.answerSpeaker || "نامشخص", q.answer || "", q.matchedQuestion || "", q.confidence || "پایین", q.evidence || ""])];
   const warnings = [["ابهام‌ها و هشدارهای تشخیص"], ...(a.transcriptWarnings || []).map((warning) => [warning])];
-  const formRows = [["شناسهٔ داخلی", "فرم", "پرسش / فیلد", "پاسخ پیشنهادی", "وضعیت", "اطمینان", "شاهد"], ...(a.formAnswers || []).map((x) => [x.code || "", x.formId || "", x.question || "", x.answer || "", x.answered ? "پیشنهاد دارد؛ تأییدنشده" : "ثبت نشده در متن", x.confidence || "پایین", x.evidence || ""])];
+  const formRows = [["شناسهٔ داخلی", "فرم", "پرسش / فیلد", "پاسخ بازبینی‌شده/پیشنهادی", "وضعیت بازبینی", "اطمینان AI", "شاهد"], ...(a.formAnswers || []).map((x) => [x.code || "", x.formId || "", x.question || "", x.answer || "", x.reviewStatus === "human_reviewed" ? "بازبینی انسانی ثبت شده" : x.answered ? "پیشنهاد AI؛ تأییدنشده" : "ثبت نشده در متن", x.confidence || "پایین", x.evidence || ""])];
   return toBlob(book([["خلاصه", sheet(info, [22, 80])], ["شایستگی‌ها", sheet(comps, [26, 14, 70])], ["قوت و ضعف", sheet(lists, [38, 38, 38, 38])], ["متن خام", sheet(tr, [120])], ["متن بازبینی‌شده", sheet(clean, [120])], ["پرسش و پاسخ", sheet(qa, [20, 60, 20, 70, 50, 12, 50])], ["هشدارهای متن", sheet(warnings, [120])], ["پیش‌نویس فرم ارجاع", sheet(formRows, [18, 10, 70, 80, 24, 12, 70])]]));
 }
 
@@ -107,7 +107,8 @@ function blocks(iv, org) {
   if (Array.isArray(a.formAnswers) && a.formAnswers.length) {
     B.push(`<div class="pad"><h2>پیش‌نویس استخراج‌شده برای فرم‌های ارجاع — تأییدنشده</h2></div>`);
     for (const item of a.formAnswers) {
-      B.push(`<div class="pad"><b>${esc(item.code || "")} — ${esc(item.question || "")}</b><div>${esc(item.answered ? (item.answer || "پاسخ نامشخص") : "پاسخ ثبت نشده / EMPTY")}</div>${item.evidence ? `<div class="sm">شاهد: ${esc(item.evidence)}</div>` : ""}${item.confidence ? `<div class="sm">اطمینان: ${esc(item.confidence)}</div>` : ""}</div>`);
+      const reviewLabel = item.reviewStatus === "human_reviewed" ? "بازبینی انسانی ثبت شده" : item.answered ? "پیشنهاد هوش مصنوعی — تأییدنشده" : "پاسخ در متن ثبت نشده";
+      B.push(`<div class="pad"><b>${esc(item.code || "")} — ${esc(item.question || "")}</b><div>${esc(item.answered ? (item.answer || "پاسخ نامشخص") : "پاسخ ثبت نشده / EMPTY")}</div><div class="sm">وضعیت: ${esc(reviewLabel)}</div>${item.evidence ? `<div class="sm">شاهد: ${esc(item.evidence)}</div>` : ""}${item.confidence ? `<div class="sm">اطمینان AI: ${esc(item.confidence)}</div>` : ""}</div>`);
     }
   }
   if (a.competencies.length) B.push(`<div class="pad"><h2>شایستگی‌ها</h2>${a.competencies.map((c) => `<div class="cr"><div class="n">${esc(c.name)}</div><div class="bar"><i style="width:${Number(c.score || 0) * 10}%"></i></div><div class="s">${esc(c.score ?? "—")}</div></div><div class="nt">${esc(c.note || "")}</div>`).join("")}</div>`);
