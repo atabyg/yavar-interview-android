@@ -33,7 +33,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
           { blob: excelBlob, name: fileBase(iv) + ".xlsx" }
         ]);
         await patchInterview(iv.id, { autoExportedAt: Date.now() });
-        toast("پیش‌نویس فرم ارجاع به‌صورت خودکار در PDF و Excel ذخیره شد.");
+        toast("پیش‌نویس ارجاع در PDF و Excel تولید شد؛ پنجرهٔ ذخیره/ارسال باز شد.");
       } catch (error) {
         toast("ذخیرهٔ خودکار فایل‌ها ناموفق بود؛ از دکمه‌های PDF و Excel استفاده کنید.");
       }
