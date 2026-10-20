@@ -84,8 +84,9 @@ test("analysis request uses OpenRouter Free and still validates the complete str
     assert.equal(requestUrl, "https://openrouter.ai/api/v1/chat/completions");
     assert.equal(sentModel, "openrouter/free");
     assert.equal(result.provider, "openrouter");
-    assert.equal(result.overall, 80);
-    assert.equal(result.competencies.length, 6);
+    assert.equal(result.overall, null);
+    assert.equal(result.competencies.length, 0);
+    assert.equal(result.verdict, "پیش‌نویس فرم ارجاع — تأییدنشده");
   } finally {
     globalThis.fetch = previous;
   }
@@ -159,8 +160,9 @@ test("analysis requests route through Mistral and preserve the full structured-a
     assert.equal(requestedUrl, "https://api.mistral.ai/v1/chat/completions");
     assert.equal(sentModel, "mistral-small-latest");
     assert.equal(result.provider, "mistral");
-    assert.equal(result.overall, 70);
-    assert.equal(result.competencies.length, 6);
+    assert.equal(result.overall, null);
+    assert.equal(result.competencies.length, 0);
+    assert.equal(result.verdict, "پیش‌نویس فرم ارجاع — تأییدنشده");
   } finally {
     globalThis.fetch = previous;
   }
@@ -190,7 +192,9 @@ test("analysis requests route through Hugging Face Inference Providers with one 
     assert.equal(requestedUrl, "https://router.huggingface.co/v1/chat/completions");
     assert.equal(sentModel, "openai/gpt-oss-120b");
     assert.equal(result.provider, "huggingface");
-    assert.equal(result.overall, 60);
+    assert.equal(result.overall, null);
+    assert.equal(result.competencies.length, 0);
+    assert.equal(result.verdict, "پیش‌نویس فرم ارجاع — تأییدنشده");
   } finally {
     globalThis.fetch = previous;
   }
@@ -224,7 +228,9 @@ test("unsupported JSON mode retries once without response_format before validati
     assert.equal(requestBodies.length, 2);
     assert.ok(requestBodies[0].response_format);
     assert.equal(Object.hasOwn(requestBodies[1], "response_format"), false);
-    assert.equal(result.overall, 50);
+    assert.equal(result.overall, null);
+    assert.equal(result.competencies.length, 0);
+    assert.equal(result.verdict, "پیش‌نویس فرم ارجاع — تأییدنشده");
     assert.equal(result.competencies.length, 6);
   } finally {
     globalThis.fetch = previous;
