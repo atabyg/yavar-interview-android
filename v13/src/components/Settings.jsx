@@ -196,6 +196,11 @@ export default function Settings({ storage, onChange }) {
       </div>
 
       <div className="card">
+        <Sw on={s.autoExportAfterAnalysis === true} set={(v) => upd({ autoExportAfterAnalysis: v })} label="ساخت خودکار PDF و Excel پس از تکمیل پیش‌نویس ارجاع" />
+        <div className="mut" style={{ marginTop: 7, lineHeight: 1.8 }}>اگر فعال باشد، پس از پایان تحلیل و آماده‌شدن پیش‌نویس، گزارش PDF و فایل Excel به‌صورت خودکار در دستگاه ذخیره می‌شوند. این خروجی‌ها پیش‌نویس‌اند و جایگزین فرم رسمی یا تأیید کارشناس نیستند.</div>
+      </div>
+
+      <div className="card">
         <div className="mut" style={{ marginBottom: 4 }}>نام کارشناس تکمیل‌کننده (در گزارش‌ها)</div>
         <input className="inp" defaultValue={s.interviewer || ""} onBlur={(e) => upd({ interviewer: e.target.value.trim() })} />
         <div className="mut" style={{ margin: "10px 0 4px" }}>عنوان سازمان در سربرگ گزارش</div>
