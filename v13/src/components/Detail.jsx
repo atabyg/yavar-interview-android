@@ -19,6 +19,9 @@ export default function Detail({ iv, onBack, onImportResult }) {
   const [full, setFull] = useState(false);
   const [offlineBusy, setOfflineBusy] = useState(false);
   const [f, setF] = useState({ candidate: iv.candidate, position: iv.position, title: iv.title });
+  const [editingFormCode, setEditingFormCode] = useState("");
+  const [formEdit, setFormEdit] = useState({ answer: "", evidence: "" });
+  const [savingFormReview, setSavingFormReview] = useState(false);
   const [autoExportStarted, setAutoExportStarted] = useState(false);
 
   useEffect(() => {
@@ -51,6 +54,36 @@ export default function Detail({ iv, onBack, onImportResult }) {
   const working = iv.status === "transcribing" || iv.status === "analyzing";
   const cur = stepIndex(iv);
   const save = (k) => () => f[k] !== iv[k] && patchInterview(iv.id, { [k]: f[k] });
+
+  function editFormItem(item) {
+    setEditingFormCode(item.code);
+    setFormEdit({ answer: item.answer || "", evidence: item.evidence || "" });
+  }
+
+  async function saveFormReview(item) {
+    if (!a || !Array.isArray(a.formAnswers) || savingFormReview) return;
+    setSavingFormReview(true);
+    try {
+      const answer = String(formEdit.answer || "").trim();
+      const evidence = String(formEdit.evidence || "").trim();
+      const reviewedAt = Date.now();
+      const formAnswers = a.formAnswers.map((current) => current.code !== item.code ? current : {
+        ...current,
+        answer,
+        evidence,
+        answered: !!answer,
+        reviewStatus: "human_reviewed",
+        reviewedAt
+      });
+      await patchInterview(iv.id, { analysis: { ...a, formAnswers, humanReviewUpdatedAt: reviewedAt } });
+      setEditingFormCode("");
+      toast("بازبینی انسانی این فیلد در پرونده ثبت شد.");
+    } catch (error) {
+      toast("ثبت بازبینی انجام نشد؛ دوباره تلاش کنید.");
+    } finally {
+      setSavingFormReview(false);
+    }
+  }
 
   async function doPdf() {
     try { setPdf(0); const b = await interviewPdf(iv, getSettings().org, setPdf); await saveFile(b, fileBase(iv) + ".pdf"); }
@@ -157,14 +190,38 @@ export default function Detail({ iv, onBack, onImportResult }) {
               <div className="card">
                 <h4>پیش‌نویس فرم‌های ارجاع — نیازمند بازبینی کارشناس</h4>
                 <div className="mut" style={{ marginBottom: 8, lineHeight: 1.8 }}>پاسخ‌ها فقط از شواهد گفت‌وگو استخراج شده‌اند. موارد خالی به معنی «ثبت نشده در متن» است؛ این پیش‌نویس جایگزین فرم رسمی، امتیازدهی کارشناس، مشاهدهٔ رفتاری، رضایت یا امضا نیست.</div>
-                {a.formAnswers.map((item, k) => (
-                  <div key={item.code || k} style={{ padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
-                    <div className="row"><b className="grow">{item.formId || ""} · {item.question}</b><span className="pill">{item.confidence || "پایین"}</span></div>
-                    <div style={{ marginTop: 5 }}>{item.answered && item.answer ? item.answer : "ثبت نشده در متن"}</div>
-                    {item.evidence && <div className="mut" style={{ marginTop: 4 }}>شاهد: {item.evidence}</div>}
-                    <div className="mut" style={{ marginTop: 3 }}>پیشنهاد هوش مصنوعی — تأییدنشده</div>
-                  </div>
-                ))}
+                {a.formAnswers.map((item, k) => {
+                  const editing = editingFormCode === item.code;
+                  const humanReviewed = item.reviewStatus === "human_reviewed";
+                  return (
+                    <div key={item.code || k} style={{ padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
+                      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                        <b className="grow">{item.formId || ""} · {item.question}</b>
+                        <span className="pill">{humanReviewed ? "بازبینی انسانی" : "اطمینان AI: " + (item.confidence || "پایین")}</span>
+                        <button className="btn line sm" onClick={() => editing ? setEditingFormCode("") : editFormItem(item)}>{editing ? "بستن ویرایش" : humanReviewed ? "ویرایش بازبینی" : "بازبینی / ویرایش"}</button>
+                      </div>
+                      {editing ? (
+                        <div style={{ marginTop: 8 }}>
+                          <label className="mut">پاسخ بازبینی‌شده (اگر در متن نیست، خالی بماند)</label>
+                          <textarea className="inp tx" rows={3} value={formEdit.answer} onChange={(e) => setFormEdit({ ...formEdit, answer: e.target.value })} />
+                          <label className="mut" style={{ display: "block", marginTop: 8 }}>شاهد متنی بازبینی‌شده</label>
+                          <textarea className="inp tx" rows={2} value={formEdit.evidence} onChange={(e) => setFormEdit({ ...formEdit, evidence: e.target.value })} />
+                          <div className="row" style={{ gap: 8, marginTop: 8 }}>
+                            <button className="btn sm" disabled={savingFormReview} onClick={() => saveFormReview(item)}>{savingFormReview ? "در حال ثبت…" : "ثبت بازبینی انسانی"}</button>
+                            <button className="btn line sm" disabled={savingFormReview} onClick={() => setEditingFormCode("")}>انصراف</button>
+                          </div>
+                          <div className="mut" style={{ marginTop: 5 }}>پاسخ خالی به معنی «در متن ثبت نشده» باقی می‌ماند و به «ندارد» تبدیل نمی‌شود.</div>
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ marginTop: 5 }}>{item.answered && item.answer ? item.answer : "ثبت نشده در متن"}</div>
+                          {item.evidence && <div className="mut" style={{ marginTop: 4 }}>شاهد: {item.evidence}</div>}
+                          <div className="mut" style={{ marginTop: 3 }}>{humanReviewed ? "بازبینی انسانی ثبت شده؛ تصمیم رسمی همچنان با کارشناس مسئول است." : "پیشنهاد هوش مصنوعی — تأییدنشده"}</div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
             {Array.isArray(a.transcriptWarnings) && a.transcriptWarnings.length > 0 && (
