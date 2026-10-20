@@ -93,7 +93,7 @@ export default function Record({ folders, items = [], onOpen }) {
       const now = Date.now();
       await saveInterview({
         id,
-        title: "مصاحبه " + dayKey(now) + " " + timeLabel(now),
+        title: "پروندهٔ ارجاع " + dayKey(now) + " " + timeLabel(now),
         candidate: candidate.trim(), position: position.trim(), caseNumber: caseNo, interviewer: s.interviewer, folderId,
         createdAt: now, durationSec: 0, status: "recording", starred: false, segs: 0,
         mime: mime || "audio/webm", sizeBytes: 0, transcript: "",
