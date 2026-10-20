@@ -101,16 +101,16 @@ export default function Detail({ iv, onBack, onImportResult }) {
         </div>
 
         <div className="card">
-          <input className="inp" placeholder="نام متقاضی" value={f.candidate} onChange={(e) => setF({ ...f, candidate: e.target.value })} onBlur={save("candidate")} />
-          <input className="inp" style={{ marginTop: 8 }} placeholder="سمت" value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })} onBlur={save("position")} />
+          <input className="inp" placeholder="نام مددجو" value={f.candidate} onChange={(e) => setF({ ...f, candidate: e.target.value })} onBlur={save("candidate")} />
+          <input className="inp" style={{ marginTop: 8 }} placeholder="شغل یا مسئولیت موردنظر" value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })} onBlur={save("position")} />
         </div>
 
         {a && (
           <>
-            <div className="card row">
+            {a.overall !== null && a.overall !== undefined && a.competencies && a.competencies.length === 6 && (<div className="card row">
               <div className="ring" style={{ width: 72, height: 72, fontSize: 26, background: scoreColor(a.overall) }}>{fa(a.overall)}</div>
               <div className="grow"><div style={{ fontWeight: 700, fontSize: 16 }}>{a.verdict}</div><div className="mut">امتیاز کل از ۱۰۰</div></div>
-            </div>
+            </div>)}
             <div className="card"><h4>خلاصه</h4><div style={{ fontSize: 13.5, lineHeight: 2 }}>{a.summary}</div></div>
             {a.cleanTranscript && (
               <div className="card">
@@ -121,7 +121,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
               </div>
             )}
             {Array.isArray(a.qaPairs) && a.qaPairs.length > 0 && (
-              <div className="card"><h4>پرسش و پاسخ‌های استخراج‌شده</h4>
+              <div className="card"><h4>پرسش و پاسخ‌های گفت‌وگوی ارجاع</h4>
                 {a.qaPairs.map((q, k) => (
                   <div key={k} style={{ padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
                     <div className="mut">پرسش ({q.questionSpeaker || "نامشخص"}): {q.question}</div>
@@ -153,7 +153,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
                 <div className="mut" style={{ marginTop: 6, lineHeight: 1.8 }}>این بخش‌ها برای جلوگیری از حدس‌زدن ثبت شده‌اند؛ در صورت نیاز فایل صوتی را گوش کنید.</div>
               </div>
             )}
-            <div className="card"><h4>شایستگی‌ها</h4>
+            {Array.isArray(a.competencies) && a.competencies.length > 0 && (<div className="card"><h4>شایستگی‌ها</h4>
               {a.competencies.map((c) => (
                 <div key={c.name} style={{ marginBottom: 10 }}>
                   <div className="row"><span className="grow" style={{ fontSize: 13, fontWeight: 600 }}>{c.name}</span><b>{fa(c.score)}</b></div>
@@ -161,7 +161,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
                   {c.note && <div className="mut" style={{ marginTop: 2 }}>{c.note}</div>}
                 </div>
               ))}
-            </div>
+            </div>)}
             {[["نقاط قوت", a.strengths, ""], ["نقاط قابل بهبود", a.weaknesses, ""], ["هشدارها", a.redFlags, "red"], ["سؤال‌های پیشنهادی مرحلهٔ بعد", a.followUp, ""]].map(([t, l, c]) => l.length > 0 && (
               <div className="card" key={t}><h4>{t}</h4><ul className={"l " + c}>{l.map((x, k) => <li key={k}>{x}</li>)}</ul></div>
             ))}
