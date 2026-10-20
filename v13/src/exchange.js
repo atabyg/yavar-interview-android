@@ -49,7 +49,7 @@ export function isEmptyValue(v) {
   return !t || EMPTY_RE.test(t);
 }
 
-const KEY_RE = /^(?:RECORD_ID|CASE_NUMBER|DATE_JALALI|FORM|CLIENT_NAME|POSITION|SUMMARY|STRENGTHS|WEAKNESSES|REDFLAGS|FOLLOWUP|WARNINGS|OVERALL|COVERAGE|VERDICT|Q\d{1,2}-\d{2,3}(?:\.(?:EVIDENCE|CONF))?|C[1-6](?:\.NOTE)?)$/;
+const KEY_RE = /^(?:RECORD_ID|CASE_NUMBER|DATE_JALALI|FORM|CLIENT_NAME|POSITION|SUMMARY|STRENGTHS|WEAKNESSES|REDFLAGS|FOLLOWUP|WARNINGS|OVERALL|COVERAGE|VERDICT|Q\d{1,2}-\d{2,3}(?:\.(?:EVIDENCE|CONF))?|F0[12]-[A-Z]\d{2}(?:\.(?:EVIDENCE|CONF))?|C[1-6](?:\.NOTE)?)$/;
 const LINE_RE = /^\s*(?:[-*•>]+\s*)?(?:\*\*|__)?\s*([A-Za-z][A-Za-z0-9_.\-]*)\s*(?:\*\*|__)?\s*[:：]\s*(?:\*\*|__)?\s*(.*)$/;
 const canonKey = (k) => k.toUpperCase()
   .replace(/\.ANSWER$/, "")
@@ -275,38 +275,24 @@ export const promptFileName = (records, key) => (records.length === 1
   : "yavar-prompt-" + String(key || "batch").replace(/\//g, "-") + ".txt");
 
 function recordTemplate(rec) {
-  const spec = formSpec(rec.questionSet);
   const L = [];
   L.push("#YAVAR_RESULT v1");
   L.push("RECORD_ID: " + rec.id);
   L.push("CASE_NUMBER: " + (rec.caseNumber || ""));
   L.push("DATE_JALALI: " + dayKey(rec.createdAt));
-  L.push("FORM: " + spec.prefix);
+  L.push("FORM: REFERRAL");
   L.push("CLIENT_NAME: " + oneLine(rec.candidate));
   L.push("SOURCE_TRANSCRIPT_FILE: " + transcriptFileName(rec));
   L.push("DATA_FORMAT: plain UTF-8 text; NOT encrypted; NO password; NO Base64; NO hidden encoding.");
-  L.push("# --- پاسخ سؤال‌ها: برای هر کد سه خط (پاسخ، شاهد، اطمینان) ---");
-  L.push("# --- پیش‌نویس فیلدهای مجاز فرم ارجاع F01/F02؛ کدها شناسهٔ داخلی برنامه‌اند، نه کد چاپی فرم ---");
+  L.push("# --- پیش‌نویس فیلدهای قابل استخراج F01/F02؛ شناسه‌ها داخلی‌اند و کد چاپی فرم نیستند ---");
   for (const item of REFERRAL_QUESTIONS) {
     L.push("# " + item.code + " | " + item.question);
     L.push(item.code + ": ");
     L.push(item.code + ".EVIDENCE: ");
     L.push(item.code + ".CONF: ");
   }
-  for (const it of spec.items) {
-    L.push("# " + it.code + " | " + it.question);
-    L.push(it.code + ": ");
-    L.push(it.code + ".EVIDENCE: ");
-    L.push(it.code + ".CONF: ");
-  }
-  L.push("# --- شایستگی‌ها: عدد صحیح ۰ تا ۱۰ ---");
-  COMPETENCIES.forEach((name, i) => {
-    L.push("# C" + (i + 1) + " | " + name);
-    L.push("C" + (i + 1) + ": ");
-    L.push("C" + (i + 1) + ".NOTE: ");
-  });
-  L.push("# --- جمع‌بندی ---");
-  for (const k of ["SUMMARY", "STRENGTHS", "WEAKNESSES", "REDFLAGS", "FOLLOWUP", "WARNINGS", "COVERAGE", "OVERALL"]) L.push(k + ": ");
+  L.push("# --- جمع‌بندی کمکی؛ بدون امتیاز رسمی یا تصمیم ارجاع ---");
+  for (const k of ["SUMMARY", "STRENGTHS", "WEAKNESSES", "REDFLAGS", "FOLLOWUP", "WARNINGS"]) L.push(k + ": ");
   L.push("TRANSCRIPT_BEGIN");
   L.push("TRANSCRIPT_END");
   L.push("#END_RESULT");
@@ -328,22 +314,17 @@ export function buildExchangePrompt(records, opts = {}) {
   L.push("");
   L.push("قواعد الزامی:");
   L.push("1) اگر صوت واقعاً قابل پردازش است فقط از محتوای صوت و متن همراه آن استفاده کن؛ در غیر این صورت از متن TXT استفاده کن. چیزی را حدس نزن، کامل نکن و اختراع نکن.");
-  L.push("2) هر کد Q..-.. فقط وقتی پاسخ دارد که پاسخ همان سؤال در صوت واقعاً آمده باشد. اگر سؤال پرسیده نشد، پاسخ داده نشد یا نامفهوم بود، دقیقاً EMPTY بنویس (برای EVIDENCE و CONF همان کد هم EMPTY).");
-  L.push("3) پاسخ هر کد: خلاصهٔ وفادار حرف مددجو/متقاضی در یک خط (حداکثر ۴۰ واژه). EVIDENCE: عین یک عبارت کوتاه از صوت (حداکثر ۲۵ واژه). CONF: فقط HIGH یا MEDIUM یا LOW.");
+  L.push("2) هر کد F01-A.. یا F02-C.. فقط وقتی پاسخ دارد که اطلاعات صریحاً در گفت‌وگو آمده باشد. اگر گفته نشده، پاسخ نامفهوم است یا گوینده نامطمئن است، مقدار را خالی بگذار و برای شاهد و اطمینان هم مقدار نساز.");
+  L.push("3) پاسخ هر فیلد: خلاصهٔ وفادار حرف مددجو در یک خط (حداکثر ۴۰ واژه). EVIDENCE: عبارت کوتاه و واقعی از متن/صوت (حداکثر ۲۵ واژه). CONF: فقط HIGH یا MEDIUM یا LOW.");
   L.push("4) هر مقدار فقط در یک خط باشد؛ از Markdown، جدول، فهرست شماره‌دار، کدبلاک و خط جدید داخل مقدار استفاده نکن. خود فایل در قالب متن ساده است و رمزگذاری یا قفل ندارد.");
-  L.push("5) هیچ نمرهٔ استخدامی یا مددکاری نساز. امتیازهای F01.D، مشاهدهٔ رفتاری F02.B، موانع ترخیص، سطح نهایی، رضایت، امضا و تأییدهای رسمی را پر نکن؛ فقط کارشناس مسئول مجاز است.");
-  L.push("6) کلیدها و کدها (مثل Q12-03.EVIDENCE) را ترجمه یا تغییر نده. فقط مقدارها فارسی باشند؛ مقدارهای CONF و EMPTY انگلیسی بمانند.");
+  L.push("5) هیچ نمرهٔ استخدامی یا مددکاری نساز. امتیازهای F01.D، مشاهدهٔ رفتاری F02.B، موانع ترخیص، سطح نهایی، رضایت، امضا و تأییدهای رسمی را پر نکن؛ فقط کارشناس مسئول مجاز است. اگر یک فیلد در این قالب نیامده، آن را اضافه نکن.");
+  L.push("6) شناسه‌های داخلی F01-A01 و F02-C01 و پسوندهای EVIDENCE/CONF را ترجمه یا تغییر نده. این شناسه‌ها کد چاپی PDF نیستند. فقط مقدارها فارسی باشند؛ مقدارهای CONF انگلیسی بمانند.");
   L.push("7) RECORD_ID، CASE_NUMBER، DATE_JALALI و FORM را عیناً از قالب بگذار.");
   L.push("8) فهرست‌ها (STRENGTHS، WEAKNESSES، REDFLAGS، FOLLOWUP، WARNINGS): هر مورد را با علامت | جدا کن؛ حداکثر ۵ مورد؛ اگر چیزی نبود EMPTY.");
   L.push("9) متن کامل گفت‌وگو (اختیاری ولی توصیه‌شده) را بین TRANSCRIPT_BEGIN و TRANSCRIPT_END بگذار؛ بخش‌های نامفهوم را با [نامفهوم] علامت بزن.");
-  L.push("10) خروجی فقط متن سادهٔ UTF-8 یا فایل TXT/DOCX خوانا باشد؛ هیچ رمزگذاری، رمزعبور، Base64، کدبلاک یا JSON لازم نیست. خروجی نهایی فقط بلوک‌های #YAVAR_RESULT v1 باشد، برای هر رکورد یک بلوک جدا. کدهای Q5/Q12/Q24 فقط شناسهٔ خوانای سؤال‌اند، نه دادهٔ رمزگذاری‌شده.");
+  L.push("10) خروجی فقط متن سادهٔ UTF-8 یا فایل TXT/DOCX خوانا باشد؛ هیچ رمزگذاری، رمزعبور، Base64، کدبلاک یا JSON لازم نیست. خروجی نهایی فقط بلوک‌های #YAVAR_RESULT v1 باشد، برای هر رکورد یک بلوک جدا.");
   L.push("");
-  L.push("محاسبات (برنامهٔ یاور همین فرمول‌ها را دوباره حساب می‌کند و اگر مقدار تو فرق داشته باشد مقدار خودش را ثبت و هشدار می‌دهد؛ نوشتن COVERAGE و OVERALL اختیاری است):");
-  L.push("- COVERAGE = گرد( تعداد کدهای دارای پاسخ ÷ تعداد کل سؤال‌های فرم × ۱۰۰ )");
-  L.push("- OVERALL = گرد( میانگین C1 تا C6 × ۱۰ ) فقط وقتی هر شش نمره موجود باشد؛ وگرنه EMPTY");
-  L.push("- نتیجه: OVERALL از ۷۰ به بالا «" + VERDICTS.high + "»؛ ۵۰ تا ۶۹ «" + VERDICTS.mid + "»؛ کمتر از ۵۰ «" + VERDICTS.low + "» (برنامه خودش تعیین می‌کند؛ لازم نیست بنویسی)");
-  L.push("- ترتیب شایستگی‌ها: " + COMPETENCIES.map((n, i) => "C" + (i + 1) + "=" + n).join("، "));
-  L.push("");
+  L.push("امتیاز رسمی، محاسبهٔ سطح نهایی و تصمیم انتقال/ارجاع تولید نکن؛ پاسخ‌های F01/F02 فقط پیش‌نویس هستند و باید با فایل صوتی و فرم رسمی بازبینی شوند.");
   L.push("عنوان نمایشی مجموعهٔ پرسش‌ها در برنامه «سؤالات ارجاع» است. Q5/Q12/Q24 فقط شناسهٔ داخلی مجموعهٔ راهنمای گفت‌وگو هستند و به معنی فرم رسمی PDF نیستند. مرجع پیوست‌شده F00 تا F08 را دارد؛ F09 موجود نیست.");
   L.push("");
   L.push("رکوردها:");
