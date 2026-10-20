@@ -85,6 +85,12 @@ function parseBlock(lines) {
     if (m) {
       const key = canonKey(m[1]);
       if (KEY_RE.test(key)) {
+        if (Object.prototype.hasOwnProperty.call(f, key)) {
+          // Ambiguous duplicate answers must never silently overwrite the first value.
+          duplicateKeys.add(key);
+          last = null;
+          continue;
+        }
         last = key;
         f[key] = line.slice(line.length - m[2].length).trim();
         continue;
