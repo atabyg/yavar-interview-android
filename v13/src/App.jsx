@@ -77,7 +77,7 @@ export default function App() {
   const T = [["rec", "ضبط", Mic], ["arc", "آرشیو", ArchiveIcon], ["day", "متن روزانه", FileText], ["set", "تنظیمات", Cog]];
   return (
     <div className="app">
-      <div className="top"><img src={logo} alt="" /><div><b>یاور مصاحبه</b><small>ضبط، متن، تحلیل و گزارش</small><small className="org-tagline">معاونت کارآفرینی و توانمندسازی</small></div></div>
+      <div className="top"><img src={logo} alt="" /><div><b>یاور — پرونده و ارجاع شغلی</b><small>ضبط، استخراج متن و پیش‌نویس فرم ارجاع</small><small className="org-tagline">معاونت کارآفرینی و توانمندسازی</small></div></div>
       <div className="main">
         <div style={{ display: tab === "rec" ? "block" : "none" }}><Record folders={folders} items={items} onOpen={(id) => { setOpen(id); }} /></div>
         {tab === "arc" && <Archive items={items} folders={folders} storage={storage} onOpen={setOpen} />}
