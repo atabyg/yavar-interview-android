@@ -41,10 +41,34 @@ export function interviewExcel(iv) {
 }
 
 export function compareExcel(list) {
-  const done = list.filter((i) => i.analysis).sort((a, b) => b.analysis.overall - a.analysis.overall);
+  const analyzed = list.filter((i) => i.analysis);
+  const hasCompleteScore = (iv) => {
+    const a = iv.analysis || {};
+    return a.overall !== null && a.overall !== undefined && a.overall !== "" &&
+      Number.isFinite(Number(a.overall)) && Number(a.overall) >= 0 && Number(a.overall) <= 100 &&
+      Array.isArray(a.competencies) && a.competencies.length === 6 &&
+      a.competencies.every((c) => c && c.score !== null && c.score !== undefined && c.score !== "" && Number.isFinite(Number(c.score)));
+  };
+  // Never rank referral-form drafts or partial analyses as if they were scored decisions.
+  const scored = analyzed.filter(hasCompleteScore).sort((a, b) => Number(b.analysis.overall) - Number(a.analysis.overall));
+  const unscored = analyzed.filter((iv) => !hasCompleteScore(iv));
   const head = ["رتبه", "متقاضی", "سمت", "تاریخ", "امتیاز کل", ...COMPETENCIES, "نتیجه"];
-  const rows = [head, ...done.map((i, k) => [k + 1, i.candidate || i.title, i.position || "-", fmtDate(i.createdAt), i.analysis.overall, ...COMPETENCIES.map((c) => (i.analysis.competencies.find((x) => x.name === c) || {}).score ?? ""), i.analysis.verdict])];
-  return toBlob(book([["مقایسه", sheet(rows, [7, 24, 22, 16, 11, 14, 14, 14, 14, 14, 14, 26])]]));
+  const rows = [head, ...scored.map((i, k) => [k + 1, i.candidate || i.title, i.position || "-", fmtDate(i.createdAt), i.analysis.overall, ...COMPETENCIES.map((c) => (i.analysis.competencies.find((x) => x.name === c) || {}).score ?? ""), i.analysis.verdict])];
+  if (!scored.length) rows.push(["", "موردی با امتیاز کامل برای رتبه‌بندی وجود ندارد"]);
+  const draftHead = ["متقاضی", "شمارهٔ پرونده", "سمت", "تاریخ", "نوع/وضعیت", "پاسخ‌های موجود", "کل فیلدها", "پوشش (٪)", "خلاصه"];
+  const draftRows = unscored.map((iv) => {
+    const a = iv.analysis || {};
+    const formAnswers = Array.isArray(a.formAnswers) ? a.formAnswers : [];
+    const referral = a.formId === "referral" || a.verdict === "پیش‌نویس فرم ارجاع — تأییدنشده" || formAnswers.some((x) => /^F0[12]-/.test(String(x.code || "")));
+    const answered = formAnswers.filter((x) => x.answered && String(x.answer || "").trim()).length;
+    const status = referral ? "پیش‌نویس فرم ارجاع — بدون رتبه/امتیاز رسمی" : "امتیاز کامل موجود نیست — بدون رتبه";
+    return [iv.candidate || iv.title || "-", iv.caseNumber || "-", iv.position || "-", fmtDate(iv.createdAt), status, answered, formAnswers.length, a.coverage ?? (formAnswers.length ? Math.round(answered * 100 / formAnswers.length) : ""), a.summary || ""];
+  });
+  if (!draftRows.length) draftRows.push(["موردی برای نمایش در این بخش وجود ندارد"]);
+  return toBlob(book([
+    ["مقایسهٔ امتیازدار", sheet(rows, [7, 24, 22, 16, 11, 14, 14, 14, 14, 14, 14, 26])],
+    ["پرونده‌های بدون رتبه", sheet([draftHead, ...draftRows], [24, 16, 22, 16, 38, 14, 14, 14, 90])]
+  ]));
 }
 
 /* ------------------------------- PDF ------------------------------- */
