@@ -331,7 +331,7 @@ export function buildExchangePrompt(records, opts = {}) {
   list.forEach((rec, n) => {
     const names = Array.from({ length: Math.max(1, rec.segs || 1) }, (_, k) => audioFileName(rec, k)).join("، ");
     const spec = formSpec(rec.questionSet);
-    L.push("- رکورد " + (n + 1) + ": RECORD_ID=" + rec.id + " | پرونده " + (rec.caseNumber || "نامشخص") + " | تاریخ " + dayKey(rec.createdAt) + " (" + dayLabel(rec.createdAt) + ") | فرم " + spec.prefix + " (" + spec.label + ") | فایل(های) صوتی: " + names);
+    L.push("- رکورد " + (n + 1) + ": RECORD_ID=" + rec.id + " | پرونده " + (rec.caseNumber || "نامشخص") + " | تاریخ " + dayKey(rec.createdAt) + " (" + dayLabel(rec.createdAt) + ") | مجموعهٔ راهنمای گفت‌وگو: " + spec.label + " | فایل(های) صوتی: " + names);
   });
   L.push("");
   L.push("قالب‌های خروجی (هر رکورد یک قالب):");
