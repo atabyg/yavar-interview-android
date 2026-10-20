@@ -194,7 +194,8 @@ function interpretBlock(f) {
   if (stats.overall === null && comps.some((c) => c.score !== null)) warnings.push("همهٔ شش نمرهٔ C1 تا C6 کامل نبود؛ امتیاز کل محاسبه نشد.");
   const row = {
     setId, formCode: spec.prefix, label: spec.label,
-    isReferralFormat: /^REFERRAL|F01|F02/i.test(String(f.FORM || "")),
+    isReferralFormat: /^REFERRAL|F01|F02/i.test(String(f.FORM || "")) ||
+      Object.keys(f).some((key) => /^F0[12]-[A-Z]\d{2}(?:\.(?:EVIDENCE|CONF))?$/.test(key)),
     recordId: oneLine(f.RECORD_ID),
     caseNumber: normalizeDigits(f.CASE_NUMBER || "").replace(/\D/g, "").slice(0, 6),
     date: normalizeDate(f.DATE_JALALI),
