@@ -73,7 +73,7 @@ export async function processInterview(id, options = {}) {
           texts.push(await transcribe(segs[i], "part" + (i + 1) + "." + ext(iv.mime), {
             provider: transcribeProvider, key, model: s.transcribeModel
           }));
-          await patchInterview(id, { segTexts: texts, transcribeProviderUsed: s.transcribeProvider }, true);
+          await patchInterview(id, { segTexts: texts, transcribeProviderUsed: transcribeProvider }, true);
         }
         await patchInterview(id, { transcript: texts.join("\n\n").trim(), status: "transcribed", step: "" });
       }
