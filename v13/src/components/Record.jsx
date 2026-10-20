@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, Square, Pause, Play, AlertTriangle, ListChecks, AudioLines, RefreshCw } from "lucide-react";
+import { Mic, Square, Pause, Play, AlertTriangle, ListChecks, AudioLines, RefreshCw, ScanFace } from "lucide-react";
 import { Recorder, pickMime } from "../recorder";
 import { finalizeAudio, patchInterview, saveInterview, deleteInterview, uid } from "../db";
 import { getSettings, saveSettings, analysisKey } from "../settings";
@@ -9,6 +9,7 @@ import { toast } from "../ui";
 import { OfflineSpeech } from "../native-bridge";
 import { QUESTION_SETS, questionSetFor } from "../questions";
 import { newCaseNumber, dayKey, timeLabel } from "../daily";
+import FaceScan from "./FaceScan";
 
 export default function Record({ folders, items = [], onOpen }) {
   const rec = useRef(null);
@@ -31,6 +32,7 @@ export default function Record({ folders, items = [], onOpen }) {
   const [partial, setPartial] = useState("");
   const [speechStatus, setSpeechStatus] = useState("");
   const [speechError, setSpeechError] = useState("");
+  const [faceOpen, setFaceOpen] = useState(false);
 
   // Every number ever issued (stored forever) + numbers on existing records -> never repeated.
   const usedNumbers = () => [...(getSettings().usedCaseNumbers || []), ...items.map((i) => i.caseNumber).filter(Boolean)];
@@ -169,6 +171,7 @@ export default function Record({ folders, items = [], onOpen }) {
   const visibleTranscript = [transcript, partial].filter(Boolean).join("\n");
   return (
     <div>
+      {faceOpen && <FaceScan usedNumbers={usedNumbers()} onClose={() => setFaceOpen(false)} onResult={(n) => { setCaseNumber(n); setFaceOpen(false); }} />}
       <div className="card">
         <div className="row" style={{ marginBottom: 8 }}><ListChecks size={17} /><b className="grow">{active ? "سؤالات ارجاع (هنگام ضبط)" : "انتخاب سؤالات ارجاع"}</b></div>
         {!active && <>
@@ -207,8 +210,9 @@ export default function Record({ folders, items = [], onOpen }) {
         <div className="row" style={{ marginTop: 8 }}>
           <input className="inp en grow" inputMode="numeric" maxLength={6} placeholder="شمارهٔ پرونده (۶ رقم)" value={caseNumber} onChange={(e) => setCaseNumber(e.target.value.replace(/\D/g, "").slice(0, 6))} />
           <button className="btn alt sm" onClick={freshCase} title="شمارهٔ جدید"><RefreshCw size={15} /> شمارهٔ جدید</button>
+          <button className="btn alt sm" onClick={() => setFaceOpen(true)} title="شناسهٔ چهره"><ScanFace size={15} /> چهره</button>
         </div>
-        <div className="mut" style={{ marginTop: 5, fontSize: 12 }}>شمارهٔ پرونده به‌صورت تصادفی و غیرتکراری ساخته می‌شود. برای جلسهٔ دوم یک مددجوی قبلی، همان شماره را دستی بنویسید.</div>
+        <div className="mut" style={{ marginTop: 5, fontSize: 12 }}>شمارهٔ پرونده به‌صورت تصادفی و غیرتکراری ساخته می‌شود. برای جلسهٔ دوم یک مددجوی قبلی، همان شماره را دستی بنویسید یا با دکمهٔ «چهره» شناسایی کنید.</div>
         <input className="inp" style={{ marginTop: 8 }} placeholder="عنوان شغلی یا مسئولیت فعلی مددجو (اختیاری)" value={position} onChange={(e) => setPosition(e.target.value)} />
         {folders.length > 0 && <div className="chips" style={{ marginTop: 10, marginBottom: 0 }}>
           <button className={"chip " + (!folderId ? "on" : "")} onClick={() => setFolderId(null)}>بدون پوشه</button>
