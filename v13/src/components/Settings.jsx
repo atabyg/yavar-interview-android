@@ -191,12 +191,12 @@ export default function Settings({ storage, onChange }) {
       </div>
 
       <div className="card">
-        <Sw on={s.autoProcess} set={(v) => upd({ autoProcess: v })} label="تحلیل خودکار پس از پایان ضبط" />
-        <div className="mut" style={{ marginTop: 7, lineHeight: 1.8 }}>با روشن‌کردن این گزینه، متن برای تحلیل به سرویس ابری انتخاب‌شده ارسال می‌شود. صوت فقط در صورت انتخاب تبدیل ابری ارسال می‌شود؛ حالت آفلاین صوت را برای تشخیص گفتار بارگذاری نمی‌کند.</div>
+        <Sw on={s.autoProcess} set={(v) => upd({ autoProcess: v })} label="استخراج خودکار پیش‌نویس فرم‌های ارجاع پس از پایان ضبط" />
+        <div className="mut" style={{ marginTop: 7, lineHeight: 1.8 }}>با روشن‌کردن این گزینه، پس از تبدیل صوت به متن، متن گفت‌وگو برای استخراج پیش‌نویس فیلدهای مجاز فرم ارجاع به سرویس ابری انتخاب‌شده ارسال می‌شود. در حالت تبدیل گفتار آفلاین، صوت بارگذاری نمی‌شود؛ در حالت تحلیل آفلاین، فقط رونویسی و نگهداری متن روی دستگاه انجام می‌شود و تکمیل معنایی فرم به مدل زبانی محلی نیاز دارد.</div>
       </div>
 
       <div className="card">
-        <div className="mut" style={{ marginBottom: 4 }}>نام مصاحبه‌گر (در گزارش‌ها)</div>
+        <div className="mut" style={{ marginBottom: 4 }}>نام کارشناس تکمیل‌کننده (در گزارش‌ها)</div>
         <input className="inp" defaultValue={s.interviewer || ""} onBlur={(e) => upd({ interviewer: e.target.value.trim() })} />
         <div className="mut" style={{ margin: "10px 0 4px" }}>عنوان سازمان در سربرگ گزارش</div>
         <input className="inp" defaultValue={s.org || ""} onBlur={(e) => upd({ org: e.target.value.trim() })} />
