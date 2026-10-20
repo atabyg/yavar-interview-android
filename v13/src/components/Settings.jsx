@@ -197,7 +197,7 @@ export default function Settings({ storage, onChange }) {
 
       <div className="card">
         <Sw on={s.autoExportAfterAnalysis === true} set={(v) => upd({ autoExportAfterAnalysis: v })} label="ساخت خودکار PDF و Excel پس از تکمیل پیش‌نویس ارجاع" />
-        <div className="mut" style={{ marginTop: 7, lineHeight: 1.8 }}>اگر فعال باشد، پس از پایان تحلیل و آماده‌شدن پیش‌نویس، گزارش PDF و فایل Excel به‌صورت خودکار در دستگاه ذخیره می‌شوند. این خروجی‌ها پیش‌نویس‌اند و جایگزین فرم رسمی یا تأیید کارشناس نیستند.</div>
+        <div className="mut" style={{ marginTop: 7, lineHeight: 1.8 }}>اگر فعال باشد، پس از پایان تحلیل و آماده‌شدن پیش‌نویس، فایل‌های PDF و Excel خودکار تولید می‌شوند؛ در اندروید پنجرهٔ ذخیره/ارسال باز می‌شود و باید مقصد را انتخاب کنید. این خروجی‌ها پیش‌نویس‌اند و جایگزین فرم رسمی یا تأیید کارشناس نیستند.</div>
       </div>
 
       <div className="card">
