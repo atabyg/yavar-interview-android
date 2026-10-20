@@ -48,7 +48,7 @@ export const DEFAULTS = {
   apiKeys: { openai: "", groq: "", gemini: "", mistral: "", cerebras: "", openrouter: "", huggingface: "" },
   transcribeProvider: "offline", transcribeModel: "whisper-large-v3",
   analyzeProvider: "groq", analyzeModel: "openai/gpt-oss-20b",
-  questionSet: "critical12", autoProcess: false, autoProcessConsentVersion: 1,
+  questionSet: "critical12", autoProcess: false, autoProcessConsentVersion: 1, autoExportAfterAnalysis: false,
   speechEnhancement: true, smartTranscriptCleanup: true,
   interviewer: "", org: "سازمان خدمات و مشارکت‌های اجتماعی شهرداری تهران", lastFolder: null
 };
