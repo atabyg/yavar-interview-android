@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { audioFileName, buildExchangePrompt, buildPatch, computeStats, formAnswersFromQa, formSpec, matchRecord, parseResults, transcriptFileName } from "../src/exchange.js";
 import { QUESTION_SETS } from "../src/questions.js";
+import { REFERRAL_FORM_REFERENCE, REFERRAL_QUESTIONS } from "../src/referral-forms.js";
 
 const stamp = Date.UTC(2026, 9, 17, 21, 0, 0); // 1405/07/26 in Tehran
 const rec = { id: "rec1", caseNumber: "123456", candidate: "نمونه", createdAt: stamp, questionSet: "critical12", segs: 1, mime: "audio/webm" };
@@ -28,6 +29,16 @@ const RESULT = [
   "STRENGTHS: الف | ب",
   "#END_RESULT"
 ].join("\n");
+
+test("referral form reference matches the attached scope and protects professional-only fields", () => {
+  assert.equal(REFERRAL_FORM_REFERENCE.pages, 22);
+  assert.deepEqual(REFERRAL_FORM_REFERENCE.formsPresent, ["F00", "F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08"]);
+  assert.deepEqual(REFERRAL_FORM_REFERENCE.formsMissing, ["F09"]);
+  assert.equal(REFERRAL_FORM_REFERENCE.f01.length, 6);
+  assert.equal(REFERRAL_FORM_REFERENCE.f02.length, 15);
+  assert.equal(REFERRAL_QUESTIONS.length, 21);
+  assert.ok(REFERRAL_FORM_REFERENCE.aiRules.some((rule) => rule.includes("F02.B")));
+});
 
 test("form specs expose stable codes for quick, 12 and 24 question forms", () => {
   assert.equal(formSpec("quick").items.length, QUESTION_SETS.quick.questions.length);
