@@ -115,6 +115,22 @@ test("referral-only results preserve evidence and never invent official scoring"
   assert.equal(analysis.formAnswers.length, 21);
 });
 
+test("referral mode stays referral-only even when no question has a usable answer", () => {
+  const row = parseResults([
+    "#YAVAR_RESULT v1",
+    "RECORD_ID: rec1",
+    "FORM: REFERRAL",
+    "SUMMARY: اطلاعات کافی برای استخراج پاسخ ثبت نشد",
+    "#END_RESULT"
+  ].join("\n"))[0];
+  assert.equal(row.isReferralFormat, true);
+  const analysis = buildPatch(rec, row).analysis;
+  assert.equal(analysis.overall, null);
+  assert.equal(analysis.competencies.length, 0);
+  assert.equal(analysis.formAnswers.length, 21);
+  assert.equal(analysis.verdict, "پیش‌نویس فرم ارجاع — تأییدنشده");
+});
+
 test("overall is not invented when a competency score is missing", () => {
   const s = computeStats(12, [{ answered: true }], [{ score: 5 }, { score: null }]);
   assert.equal(s.overall, null);
