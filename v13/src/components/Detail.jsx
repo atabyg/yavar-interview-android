@@ -10,8 +10,8 @@ import AudioPlayer from "./AudioPlayer";
 import { shareExchangePack } from "../exchange-share";
 import { dayKey } from "../daily";
 
-const STEPS = [["ضبط", Mic], ["متن", FileText], ["تحلیل", Sparkles], ["گزارش", Check]];
-const stepIndex = (i) => (i.status === "done" ? 4 : i.status === "analyzing" || i.status === "transcribed" ? 2 : i.status === "transcribing" || i.status === "recorded" ? 1 : i.status === "error" ? (i.failedAt === "analyze" ? 2 : 1) : 0);
+const STEPS = [["ضبط", Mic], ["متن", FileText], ["تحلیل", Sparkles]];
+const stepIndex = (i) => (i.status === "done" ? STEPS.length : i.status === "analyzing" || i.status === "transcribed" ? 2 : i.status === "transcribing" || i.status === "recorded" ? 1 : i.status === "error" ? (i.failedAt === "analyze" ? 2 : 1) : 0);
 
 export default function Detail({ iv, onBack, onImportResult }) {
   const [segs, setSegs] = useState([]);
@@ -25,7 +25,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
   const [autoExportStarted, setAutoExportStarted] = useState(false);
 
   useEffect(() => {
-    if (autoExportStarted || iv.status !== "done" || !iv.analysis || !Array.isArray(iv.analysis.formAnswers) || !getSettings().autoExportAfterAnalysis || iv.autoExportedAt) return;
+    if (autoExportStarted || iv.status !== "done" || !iv.analysis || !Array.isArray(iv.analysis.formAnswers) || !getSettings().autoExportAfterAnalysis || iv.autoExportPromptedAt || iv.autoExportedAt) return;
     setAutoExportStarted(true);
     (async () => {
       try {
@@ -35,7 +35,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
           { blob: pdfBlob, name: fileBase(iv) + ".pdf" },
           { blob: excelBlob, name: fileBase(iv) + ".xlsx" }
         ]);
-        await patchInterview(iv.id, { autoExportedAt: Date.now() });
+        await patchInterview(iv.id, { autoExportPromptedAt: Date.now() });
         toast("پیش‌نویس ارجاع در PDF و Excel تولید شد؛ پنجرهٔ ذخیره/ارسال باز شد.");
       } catch (error) {
         toast("ذخیرهٔ خودکار فایل‌ها ناموفق بود؛ از دکمه‌های PDF و Excel استفاده کنید.");
@@ -144,8 +144,8 @@ export default function Detail({ iv, onBack, onImportResult }) {
           <div className="steps">{STEPS.map(([n, Ic], k) => (
             <div key={n} className={"step " + (k < cur ? "done" : k === cur ? "cur" : "")}><span>{k < cur ? <Check size={14} /> : k === cur && working ? <Loader2 size={14} className="spin" /> : <Ic size={14} />}</span>{n}</div>
           ))}</div>
-          {working && <div className="mut" style={{ textAlign: "center" }}>{iv.step}</div>}
-          {iv.status === "recorded" && !(getSettings().apiKeys && getSettings().apiKeys[getSettings().analyzeProvider]) && <div className="mut" style={{ textAlign: "center", lineHeight: 1.9 }}>برای تحلیل، کلید سرویس انتخاب‌شده را در «تنظیمات» وارد کنید.</div>}
+          {(working || (iv.status === "transcribed" && iv.step)) && <div className="mut" style={{ textAlign: "center", lineHeight: 1.9 }}>{iv.step}</div>}
+          {(iv.status === "recorded" || iv.status === "transcribed") && !(getSettings().apiKeys && getSettings().apiKeys[getSettings().analyzeProvider]) && <div className="mut" style={{ textAlign: "center", lineHeight: 1.9 }}>متن صوت محفوظ است؛ برای استخراج معنایی پیش‌نویس فرم، کلید سرویس تحلیل را در «تنظیمات» وارد کنید. امتیاز رسمی به‌صورت خودکار تولید نمی‌شود.</div>}
           {(iv.status === "error" || iv.status === "recorded" || iv.status === "transcribed") && (
             <>
               {iv.error && <div style={{ color: "var(--terra)", fontSize: 13, margin: "6px 0", lineHeight: 1.8 }}>{iv.error}</div>}
