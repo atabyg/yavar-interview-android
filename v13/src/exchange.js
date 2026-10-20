@@ -132,7 +132,9 @@ function interpretBlock(f) {
   if (!Object.keys(f).length) return null;
   const setId = resolveSetId(f);
   const spec = formSpec(setId);
-  const warnings = [];
+  const warnings = (f.__duplicateKeys || []).map((key) =>
+    "کلید «" + key + "» بیش از یک بار آمده است؛ مقدار اول نگه داشته شد و نسخهٔ تکراری نادیده گرفته شد."
+  );
   const answers = spec.items.map((item) => {
     const answer = oneLine(f[item.code]);
     const answered = !isEmptyValue(answer);
