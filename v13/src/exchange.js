@@ -258,9 +258,13 @@ export function buildAnalysis(row) {
   };
 }
 export function buildPatch(iv, row) {
+  const isReferral = !!row.isReferralFormat || (Array.isArray(row.referralAnswers) && row.referralAnswers.some((a) => a.answered));
   const patch = {
     analysis: buildAnalysis(row), status: "done", step: "", error: "", failedAt: null,
-    questionSet: row.setId, questionSetLabel: row.label, externalImportAt: Date.now()
+    // Referral-form output is not the legacy Q5/Q12/Q24 interview mode. Preserve the interview's original mode.
+    questionSet: isReferral ? (iv.questionSet || row.setId) : row.setId,
+    questionSetLabel: isReferral ? (iv.questionSetLabel || "سؤالات ارجاع") : row.label,
+    externalImportAt: Date.now()
   };
   if (!String(iv.transcript || "").trim() && row.transcript) { patch.transcript = row.transcript; patch.transcribeProviderUsed = "external"; }
   return patch;
