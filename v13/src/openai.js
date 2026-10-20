@@ -137,18 +137,11 @@ export async function analyze(transcript, ctx, opts) {
   else if (["openai", "groq", "mistral", "cerebras", "openrouter", "huggingface"].includes(opts.provider)) text = await openAiCompatible(opts.provider, opts.key, opts.model, user, systemPrompt);
   else throw new Error("ارائه‌دهندهٔ تحلیل در تنظیمات معتبر نیست.");
   const j = parseJson(text);
-  const list = Array.isArray(j.competencies) ? j.competencies : [];
-  const competencies = COMPETENCIES.map((name, i) => {
-    const c = list.find((x) => x && x.name === name) || list[i];
-    if (!c || c.score === undefined || c.score === null || !Number.isFinite(Number(c.score))) return null;
-    return { name, score: clamp(c.score, 0, 10), note: String(c.note || "شواهد کافی نبود") };
-  }).filter(Boolean);
-  const hasOfficialScore = competencies.length === COMPETENCIES.length;
   return {
     summary: String(j.summary || ""),
-    overall: hasOfficialScore ? Math.round(competencies.reduce((sum, item) => sum + item.score, 0) / COMPETENCIES.length * 10) : null,
-    verdict: hasOfficialScore && ["پیشنهاد استخدام", "مشروط / نیازمند بررسی بیشتر", "عدم پیشنهاد"].includes(j.verdict) ? j.verdict : "پیش‌نویس فرم ارجاع — تأییدنشده",
-    competencies, strengths: arr(j.strengths), weaknesses: arr(j.weaknesses), redFlags: arr(j.redFlags), followUp: arr(j.followUp),
+    overall: null,
+    verdict: "پیش‌نویس فرم ارجاع — تأییدنشده",
+    competencies: [], strengths: arr(j.strengths), weaknesses: arr(j.weaknesses), redFlags: arr(j.redFlags), followUp: arr(j.followUp),
     cleanTranscript: String(j.cleanTranscript || sourceTranscript).slice(0, 90000),
     qaPairs: sanitizeQaPairs(j.qaPairs),
     transcriptWarnings: arr(j.transcriptWarnings),
