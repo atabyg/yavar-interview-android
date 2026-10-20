@@ -99,6 +99,7 @@ function parseBlock(lines) {
     if (last && line.trim()) f[last] = (f[last] + " " + line.trim()).trim();
   }
   if (tx !== null) f.TRANSCRIPT = tx.join("\n").trim();
+  Object.defineProperty(f, "__duplicateKeys", { value: [...duplicateKeys], enumerable: false });
   return f;
 }
 
