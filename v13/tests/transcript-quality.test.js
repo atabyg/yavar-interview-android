@@ -28,3 +28,17 @@ test("Q/A sanitation normalizes roles, limits rows, and rejects rows without a q
   assert.equal(got[0].confidence, "بالا");
   assert.equal(got[1].confidence, "پایین");
 });
+
+test("short transcript is valid for transcription-only flow but not semantic analysis", () => {
+  assert.equal(transcriptStageError("سلام", true), "");
+  assert.match(transcriptStageError("سلام", false), /تحلیل کافی نیست/);
+});
+
+test("empty transcription is always rejected, even in transcription-only flow", () => {
+  assert.match(transcriptStageError("", true), /متن قابل‌استفاده‌ای تولید نکرد/);
+  assert.match(transcriptStageError("   ", false), /متن قابل‌استفاده‌ای تولید نکرد/);
+});
+
+test("long enough transcript can proceed to analysis", () => {
+  assert.equal(transcriptStageError("این یک متن نمونه با طول کافی برای تحلیل است.", false), "");
+});
