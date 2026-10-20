@@ -93,7 +93,7 @@ export default function Settings({ storage, onChange }) {
   return (
     <div>
       <div className="card">
-        <h4><Wifi size={14} style={{ verticalAlign: "-2px" }} /> سرویس تحلیل و امتیازدهی</h4>
+        <h4><Wifi size={14} style={{ verticalAlign: "-2px" }} /> سرویس تحلیل و پیش‌نویس فرم‌های ارجاع</h4>
         <select className="inp" value={s.analyzeProvider} onChange={(e) => changeAnalyzeProvider(e.target.value)}>
           {KEY_PROVIDERS.map((p) => <option value={p} key={p}>{PROVIDERS[p].label} / سهمیهٔ رایگان محدود</option>)}
         </select>
@@ -207,7 +207,7 @@ export default function Settings({ storage, onChange }) {
           <button className="btn alt sm" onClick={async () => toast((await requestPersist()) ? "ذخیره‌سازی دائمی فعال شد" : "این دستگاه قبلاً دائمی کرده یا اجازه نداد")}>دائمی‌سازی</button></div>
         <div className="mut" style={{ marginTop: 10, lineHeight: 1.9 }}>برای ضبط طولانی روی گوشی‌های شیائومی/ردمی: تنظیمات ← برنامه‌ها ← یاور مصاحبه ← «صرفه‌جویی باتری» را روی «بدون محدودیت» بگذارید و برنامه را در لیست اخیر قفل کنید.</div>
       </div>
-      <div className="mut" style={{ textAlign: "center" }}>یاور مصاحبه — نسخهٔ ۱۲٫۰٫۰</div>
+      <div className="mut" style={{ textAlign: "center" }}>یاور — نسخهٔ ۱۳٫۰٫۰</div>
     </div>
   );
 }
