@@ -26,7 +26,7 @@ export function interviewExcel(iv) {
   const a = iv.analysis || {};
   const info = [
     ["گزارش ارجاع مددجو", ""], ["نام متقاضی", iv.candidate || "-"], ["سمت", iv.position || "-"], ["مصاحبه‌گر", iv.interviewer || "-"],
-    ["تاریخ", fmtDate(iv.createdAt)], ["مدت", fmtDur(iv.durationSec)], ["امتیاز کل (از ۱۰۰)", a.overall ?? "-"], ["نتیجه", a.verdict || "-"], ["خلاصه", a.summary || "-"],
+    ["تاریخ", fmtDate(iv.createdAt)], ["مدت", fmtDur(iv.durationSec)], ["وضعیت پیش‌نویس فرم", a.verdict || "نیازمند بازبینی کارشناس"], ["خلاصه", a.summary || "-"],
   ];
   const comps = [["شایستگی", "امتیاز (از ۱۰)", "توضیح"], ...(a.competencies || []).map((c) => [c.name, c.score, c.note])];
   const n = Math.max((a.strengths || []).length, (a.weaknesses || []).length, (a.redFlags || []).length, (a.followUp || []).length);
@@ -77,7 +77,7 @@ function blocks(iv, org) {
   <div class="pad"><div class="meta"><div><b>متقاضی:</b> ${esc(iv.candidate || "-")}</div><div><b>شمارهٔ پرونده:</b> ${esc(iv.caseNumber || "-")}</div><div><b>سمت:</b> ${esc(iv.position || "-")}</div><div><b>مصاحبه‌گر:</b> ${esc(iv.interviewer || "-")}</div><div><b>تاریخ:</b> ${fmtDate(iv.createdAt)} — ${fmtTime(iv.createdAt)}</div><div><b>مدت:</b> ${fmtDur(iv.durationSec)}</div></div></div>`);
   if (iv.reportNote) B.push(`<div class="pad"><div class="sm">${esc(iv.reportNote)}</div></div>`);
   if (a.overall !== null && a.overall !== undefined && a.overall !== "") {
-    B.push(`<div class="pad"><div class="score"><div class="ring">${esc(a.overall)}</div><div><div class="vd">${esc(a.verdict || "نتیجه تعیین نشده")}</div><div class="sm">امتیاز کل از ۱۰۰ — ارزیابی هوش مصنوعی (مدل ${esc(a.model || "")})</div></div></div></div>`);
+    B.push(`<div class="pad"><div class="score"><div class="ring">${esc(a.overall)}</div><div><div class="vd">${esc(a.verdict || "نتیجه تعیین نشده")}</div><div class="sm">امتیاز محاسبه‌شده (مدل ${esc(a.model || "")})</div></div></div></div>`);
   }
   if (a.summary) B.push(`<div class="pad"><h2>خلاصه</h2><div>${esc(a.summary)}</div></div>`);
   if (Array.isArray(a.formAnswers) && a.formAnswers.length) {
