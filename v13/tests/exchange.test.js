@@ -42,10 +42,11 @@ test("prompt carries record identity, audio file name, referral form fields and 
   assert.match(p, /DATE_JALALI: 1405\/07\/26/);
   assert.match(p, /FORM: REFERRAL/);
   assert.match(p, /yavar-rec1-1\.webm/);
-  assert.match(p, /F02-C15\.CONF:/);\n  assert.match(p, /F01-A01/);
-  assert.match(p, /C6\.NOTE:/);
-  assert.match(p, /COVERAGE/);
-  assert.match(p, /OVERALL/);
+  assert.match(p, /F02-C15\.CONF:/);
+  assert.match(p, /F01-A01/);
+  assert.match(p, /امتیاز رسمی/);
+  assert.doesNotMatch(p, /C6\.NOTE:/);
+  assert.doesNotMatch(p, /OVERALL:/);
   assert.match(p, /NOT encrypted/);
   assert.match(p, /NO Base64/);
   assert.match(p, /SOURCE_TRANSCRIPT_FILE/);
