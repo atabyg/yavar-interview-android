@@ -170,16 +170,16 @@ export default function Record({ folders, items = [], onOpen }) {
   return (
     <div>
       <div className="card">
-        <div className="row" style={{ marginBottom: 8 }}><ListChecks size={17} /><b className="grow">{active ? "پرسش‌های مصاحبه (هنگام ضبط)" : "نوع پرسش‌نامهٔ مصاحبه"}</b><span className="mut">{qs.questions.length} سؤال</span></div>
+        <div className="row" style={{ marginBottom: 8 }}><ListChecks size={17} /><b className="grow">{active ? "سؤالات ارجاع (هنگام ضبط)" : "انتخاب سؤالات ارجاع"}</b></div>
         {!active && <>
           <select className="inp" value={questionSet} onChange={(e) => { setQuestionSet(e.target.value); saveSettings({ questionSet: e.target.value }); }}>
             {Object.values(QUESTION_SETS).map((q) => <option value={q.id} key={q.id}>{q.label}</option>)}
           </select>
-          <div className="mut" style={{ marginTop: 7 }}>{qs.description}؛ پرسش‌ها برای راهنمای مصاحبه و تحلیل مستند استفاده می‌شوند.</div>
+          <div className="mut" style={{ marginTop: 7 }}>{qs.description}؛ متن گفت‌وگو پس از ضبط برای استخراج پیش‌نویس فرم‌های ارجاع استفاده می‌شود.</div>
         </>}
         {active && <div className="mut" style={{ marginTop: 2 }}>{qs.label} — برای جمع‌وجور شدن صفحه، فهرست را ببندید.</div>}
         <details open={questionsOpen} onToggle={(e) => setQuestionsOpen(e.currentTarget.open)} style={{ marginTop: 10 }}>
-          <summary style={{ cursor: "pointer", color: "var(--teal)", fontSize: 13 }}>{questionsOpen ? "بستن فهرست پرسش‌ها" : "نمایش پرسش‌های این مجموعه"} ({qs.questions.length})</summary>
+          <summary style={{ cursor: "pointer", color: "var(--teal)", fontSize: 13 }}>{questionsOpen ? "بستن فهرست سؤالات ارجاع" : "نمایش سؤالات ارجاع"}</summary>
           <ol style={{ paddingRight: 22, fontSize: 13, lineHeight: 1.9 }}>{qs.questions.map((q, i) => <li key={i}>{q}</li>)}</ol>
         </details>
       </div>
@@ -223,7 +223,7 @@ export default function Record({ folders, items = [], onOpen }) {
       </div>}
 
       {!analysisKey() && !active && <div className="card mut" style={{ lineHeight: 1.9 }}>
-        برای امتیازدهی خودکار، در «تنظیمات» یک سرویس تحلیل و کلید آن را انتخاب کنید. ضبط و تبدیل گفتار آفلاین بدون کلید هم کار می‌کند.
+        برای استخراج خودکار پیش‌نویس فرم‌های ارجاع از متن، در «تنظیمات» سرویس تحلیل و کلید آن را تنظیم کنید. ضبط و تبدیل گفتار آفلاین بدون کلید هم کار می‌کند.
       </div>}
     </div>
   );
