@@ -145,7 +145,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
             <div key={n} className={"step " + (k < cur ? "done" : k === cur ? "cur" : "")}><span>{k < cur ? <Check size={14} /> : k === cur && working ? <Loader2 size={14} className="spin" /> : <Ic size={14} />}</span>{n}</div>
           ))}</div>
           {(working || (iv.status === "transcribed" && iv.step)) && <div className="mut" style={{ textAlign: "center", lineHeight: 1.9 }}>{iv.step}</div>}
-          {(iv.status === "recorded" || iv.status === "transcribed") && !(getSettings().apiKeys && getSettings().apiKeys[getSettings().analyzeProvider]) && <div className="mut" style={{ textAlign: "center", lineHeight: 1.9 }}>متن صوت محفوظ است؛ برای استخراج معنایی پیش‌نویس فرم، کلید سرویس تحلیل را در «تنظیمات» وارد کنید. امتیاز رسمی به‌صورت خودکار تولید نمی‌شود.</div>}
+          {(iv.status === "recorded" || (iv.status === "transcribed" && !iv.step)) && !(getSettings().apiKeys && getSettings().apiKeys[getSettings().analyzeProvider]) && <div className="mut" style={{ textAlign: "center", lineHeight: 1.9 }}>متن صوت محفوظ است؛ برای استخراج معنایی پیش‌نویس فرم، کلید سرویس تحلیل را در «تنظیمات» وارد کنید. امتیاز رسمی به‌صورت خودکار تولید نمی‌شود.</div>}
           {(iv.status === "error" || iv.status === "recorded" || iv.status === "transcribed") && (
             <>
               {iv.error && <div style={{ color: "var(--terra)", fontSize: 13, margin: "6px 0", lineHeight: 1.8 }}>{iv.error}</div>}
