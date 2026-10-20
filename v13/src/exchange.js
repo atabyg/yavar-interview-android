@@ -161,6 +161,16 @@ function interpretBlock(f) {
       reviewStatus: "ai_draft"
     };
   });
+  for (const item of answers) {
+    if (item.answered && !item.evidence) warnings.push("پاسخ " + item.code + " بدون شاهد متنی است؛ پیش از ثبت بررسی شود.");
+    if (!item.answered && !isEmptyValue(f[item.code + ".EVIDENCE"])) warnings.push("برای " + item.code + " شاهد آمده اما پاسخ خالی است؛ بررسی شود.");
+    if (item.answered && isEmptyValue(f[item.code + ".CONF"])) warnings.push("سطح اطمینان " + item.code + " ثبت نشده است.");
+  }
+  for (const item of referralAnswers) {
+    if (item.answered && !item.evidence) warnings.push("پاسخ " + item.code + " بدون شاهد متنی است؛ پیش از ثبت بررسی شود.");
+    if (!item.answered && !isEmptyValue(f[item.code + ".EVIDENCE"])) warnings.push("برای " + item.code + " شاهد آمده اما پاسخ خالی است؛ بررسی شود.");
+    if (item.answered && isEmptyValue(f[item.code + ".CONF"])) warnings.push("سطح اطمینان " + item.code + " ثبت نشده است.");
+  }
   const comps = COMPETENCIES.map((name, i) => {
     const code = "C" + (i + 1);
     const raw = f[code];
