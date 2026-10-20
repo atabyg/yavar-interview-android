@@ -25,7 +25,7 @@ const toBlob = (wb) => new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array
 export function interviewExcel(iv) {
   const a = iv.analysis || {};
   const info = [
-    ["گزارش ارجاع مددجو", ""], ["نام متقاضی", iv.candidate || "-"], ["سمت", iv.position || "-"], ["مصاحبه‌گر", iv.interviewer || "-"],
+    ["گزارش ارجاع مددجو", ""], ["نام مددجو", iv.candidate || "-"], ["شغل/مسئولیت موردنظر", iv.position || "-"], ["مصاحبه‌گر", iv.interviewer || "-"],
     ["تاریخ", fmtDate(iv.createdAt)], ["مدت", fmtDur(iv.durationSec)], ["وضعیت پیش‌نویس فرم", a.verdict || "نیازمند بازبینی کارشناس"], ["خلاصه", a.summary || "-"],
   ];
   const comps = [["شایستگی", "امتیاز (از ۱۰)", "توضیح"], ...(a.competencies || []).map((c) => [c.name, c.score, c.note])];
@@ -74,7 +74,7 @@ function blocks(iv, org) {
   const li = (x) => x.map((t) => `<li>${esc(t)}</li>`).join("");
   const B = [];
   B.push(`<div class="hd"><img src="${logo}"/><div><h1>${esc(iv.reportTitle || "گزارش ارجاع مددجو")}</h1><p>${esc(org)}</p></div></div>
-  <div class="pad"><div class="meta"><div><b>متقاضی:</b> ${esc(iv.candidate || "-")}</div><div><b>شمارهٔ پرونده:</b> ${esc(iv.caseNumber || "-")}</div><div><b>سمت:</b> ${esc(iv.position || "-")}</div><div><b>مصاحبه‌گر:</b> ${esc(iv.interviewer || "-")}</div><div><b>تاریخ:</b> ${fmtDate(iv.createdAt)} — ${fmtTime(iv.createdAt)}</div><div><b>مدت:</b> ${fmtDur(iv.durationSec)}</div></div></div>`);
+  <div class="pad"><div class="meta"><div><b>مددجو:</b> ${esc(iv.candidate || "-")}</div><div><b>شمارهٔ پرونده:</b> ${esc(iv.caseNumber || "-")}</div><div><b>شغل/مسئولیت:</b> ${esc(iv.position || "-")}</div><div><b>مصاحبه‌گر:</b> ${esc(iv.interviewer || "-")}</div><div><b>تاریخ:</b> ${fmtDate(iv.createdAt)} — ${fmtTime(iv.createdAt)}</div><div><b>مدت:</b> ${fmtDur(iv.durationSec)}</div></div></div>`);
   if (iv.reportNote) B.push(`<div class="pad"><div class="sm">${esc(iv.reportNote)}</div></div>`);
   if (a.overall !== null && a.overall !== undefined && a.overall !== "") {
     B.push(`<div class="pad"><div class="score"><div class="ring">${esc(a.overall)}</div><div><div class="vd">${esc(a.verdict || "نتیجه تعیین نشده")}</div><div class="sm">امتیاز محاسبه‌شده (مدل ${esc(a.model || "")})</div></div></div></div>`);
