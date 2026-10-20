@@ -168,6 +168,65 @@ test("in-app AI question pairs map to the same coded answers", () => {
 });
 
 
+test("duplicate external keys are not silently overwritten and are surfaced for review", () => {
+  const row = parseResults([
+    "#YAVAR_RESULT v1",
+    "RECORD_ID: rec1",
+    "FORM: REFERRAL",
+    "F01-A01: پاسخ نخست",
+    "F01-A01.EVIDENCE: این پاسخ نخست است",
+    "F01-A01: پاسخ دوم",
+    "F02-C01: پاسخ بدون شاهد",
+    "#END_RESULT"
+  ].join("\n"))[0];
+  assert.equal(row.isReferralFormat, true);
+  assert.equal(row.referralAnswers.find((a) => a.code === "F01-A01").answer, "پاسخ نخست");
+  assert.ok(row.warnings.some((w) => w.includes("F01-A01") && w.includes("بیش از یک بار")));
+  assert.ok(row.warnings.some((w) => w.includes("F02-C01") && w.includes("بدون شاهد")));
+});
+
+test("referral fields identify referral mode even when FORM marker is missing", () => {
+  const row = parseResults([
+    "#YAVAR_RESULT v1",
+    "RECORD_ID: rec1",
+    "F01-A01: EMPTY",
+    "F01-A01.EVIDENCE: EMPTY",
+    "#END_RESULT"
+  ].join("\n"))[0];
+  assert.equal(row.isReferralFormat, true);
+  const patch = buildPatch({ ...rec, questionSet: "full", questionSetLabel: "سؤالات جامع" }, row);
+  assert.equal(patch.analysis.overall, null);
+  assert.equal(patch.analysis.competencies.length, 0);
+  assert.equal(patch.questionSet, "full");
+  assert.equal(patch.questionSetLabel, "سؤالات جامع");
+});
+
+test("referral import without its own mode metadata preserves interview question set", () => {
+  const row = parseResults([
+    "#YAVAR_RESULT v1",
+    "RECORD_ID: rec1",
+    "FORM: REFERRAL",
+    "F01-A01: پاسخ صریح",
+    "F01-A01.EVIDENCE: شاهد مرتبط",
+    "#END_RESULT"
+  ].join("\n"))[0];
+  const patch = buildPatch({ ...rec, questionSet: "full", questionSetLabel: "سؤالات جامع" }, row);
+  assert.equal(patch.questionSet, "full");
+  assert.equal(patch.questionSetLabel, "سؤالات جامع");
+  assert.equal(patch.analysis.formId, "referral");
+});
+
+test("evidence without an answer is flagged instead of silently accepted", () => {
+  const row = parseResults([
+    "#YAVAR_RESULT v1",
+    "FORM: REFERRAL",
+    "F02-C01: EMPTY",
+    "F02-C01.EVIDENCE: نقل قول ناقص",
+    "#END_RESULT"
+  ].join("\n"))[0];
+  assert.ok(row.warnings.some((w) => w.includes("F02-C01") && w.includes("شاهد آمده اما پاسخ خالی است")));
+});
+
 test("external hand-off filenames are readable plain filenames for cross-model use", () => {
   const ready = { ...rec, exchangeAudioFiles: ["yavar-rec1-1.wav"], exchangeTranscriptFile: "yavar-rec1-transcript.txt" };
   assert.equal(audioFileName(ready, 0), "yavar-rec1-1.wav");
