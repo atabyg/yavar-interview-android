@@ -57,11 +57,11 @@ jobs:
           python3 -m pip install --disable-pip-version-check pillow
           python3 -c "from PIL import Image; im=Image.open('src/assets/logo.png'); im.load(); print('logo ok', im.size)"
           python3 make-icons.py
-      - name: Generate lockfile for the temporary v12-derived workspace and run tests
+      - name: Generate temporary lockfile and run tests
         run: |
           set -euo pipefail
           cd "$BUILD_DIR"
-          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.name='yavar-interview-v13-bootstrap';p.version='13.0.0';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\\n')"
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.name='yavar-interview-v13-bootstrap';p.version='13.0.0';fs.writeFileSync('package.json',JSON.stringify(p,null,2))"
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           test -s package-lock.json
           npm ci --no-audit --no-fund
@@ -82,14 +82,17 @@ jobs:
           npx cap sync android
           bash patch-v12.sh
           python3 - android/app/build.gradle <<'PY'
-          import re, sys
+          import sys
           p=sys.argv[1]
-          s=open(p,encoding='utf-8').read()
-          s=re.sub(r'(?m)^\\s*versionCode\\s+\\d+', '        versionCode 13', s, count=1)
-          s=re.sub(r'(?m)^\\s*versionName\\s+[\"\\'][^\"\\']+[\"\\']', '        versionName "13.0.0"', s, count=1)
-          if not re.search(r'(?m)^\\s*versionCode\\s+13\\s*$',s): raise SystemExit('versionCode 13 missing')
-          if not re.search(r'(?m)^\\s*versionName\\s+[\"\\']13\\.0\\.0[\"\\']\\s*$',s): raise SystemExit('versionName 13.0.0 missing')
-          open(p,'w',encoding='utf-8').write(s)
+          lines=open(p,encoding='utf-8').read().splitlines()
+          for i,line in enumerate(lines):
+              if line.strip().startswith('versionCode '):
+                  lines[i]='        versionCode 13'
+              elif line.strip().startswith('versionName '):
+                  lines[i]='        versionName "13.0.0"'
+          if not any(line.strip()=='versionCode 13' for line in lines): raise SystemExit('versionCode 13 missing')
+          if not any(line.strip()=='versionName "13.0.0"' for line in lines): raise SystemExit('versionName 13.0.0 missing')
+          open(p,'w',encoding='utf-8').write('\n'.join(lines)+'\n')
           PY
           python3 - android/app/src/main/java <<'PY'
           from pathlib import Path
