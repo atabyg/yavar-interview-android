@@ -131,22 +131,28 @@ export async function reanalyze(id) {
   await patchInterview(id, { analysis: null, status: "transcribed", error: "" });
   await processInterview(id);
 
-  // Re-analysis may improve AI suggestions, but must not erase human-reviewed fields.
-  if (reviewed.length) {
-    const latest = await getInterview(id);
-    if (latest) {
-      const base = latest.analysis || previousAnalysis || {};
-      const freshAnswers = Array.isArray(base.formAnswers) ? base.formAnswers : [];
-      const reviewedByCode = new Map(reviewed.map((item) => [item.code, item]));
-      const merged = freshAnswers.map((item) => reviewedByCode.has(item.code) ? reviewedByCode.get(item.code) : item);
-      const present = new Set(freshAnswers.map((item) => item.code));
-      for (const item of reviewed) if (!present.has(item.code)) merged.push(item);
+  const latest = await getInterview(id);
+  if (latest && previousAnalysis) {
+    const hasFreshAnalysis = !!latest.analysis;
+    const base = hasFreshAnalysis ? latest.analysis : previousAnalysis;
+    const freshAnswers = Array.isArray(base.formAnswers) ? base.formAnswers : [];
+    const reviewedByCode = new Map(reviewed.map((item) => [item.code, item]));
+    const merged = freshAnswers.map((item) => reviewedByCode.has(item.code) ? reviewedByCode.get(item.code) : item);
+    const present = new Set(freshAnswers.map((item) => item.code));
+    for (const item of reviewed) if (!present.has(item.code)) merged.push(item);
+
+    // A failed/missing-key retry must not destroy the last successful analysis.
+    // A successful retry refreshes AI suggestions but preserves human-reviewed fields.
+    if (!hasFreshAnalysis || reviewed.length) {
       await patchInterview(id, {
         analysis: {
           ...base,
           formAnswers: merged,
-          humanReviewPreservedAt: Date.now(),
-          humanReviewPreservedAfterReanalysisError: !latest.analysis
+          ...(reviewed.length ? { humanReviewPreservedAt: Date.now() } : {}),
+          ...(!hasFreshAnalysis ? {
+            analysisStaleAfterReanalysisFailure: true,
+            reanalysisFailureMessage: latest.error || latest.step || "تحلیل مجدد تکمیل نشد؛ آخرین تحلیل موفق قبلی حفظ شده است."
+          } : {})
         }
       });
     }
