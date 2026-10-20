@@ -122,6 +122,34 @@ export async function processInterview(id, options = {}) {
 }
 
 export async function reanalyze(id) {
+  const before = await getInterview(id);
+  if (!before) throw new Error("پروندهٔ مصاحبه پیدا نشد.");
+  const previousAnalysis = before.analysis || null;
+  const reviewed = Array.isArray(previousAnalysis && previousAnalysis.formAnswers)
+    ? previousAnalysis.formAnswers.filter((item) => item && item.reviewStatus === "human_reviewed")
+    : [];
   await patchInterview(id, { analysis: null, status: "transcribed", error: "" });
-  return processInterview(id);
+  await processInterview(id);
+
+  // Re-analysis may improve AI suggestions, but must not erase human-reviewed fields.
+  if (reviewed.length) {
+    const latest = await getInterview(id);
+    if (latest) {
+      const base = latest.analysis || previousAnalysis || {};
+      const freshAnswers = Array.isArray(base.formAnswers) ? base.formAnswers : [];
+      const reviewedByCode = new Map(reviewed.map((item) => [item.code, item]));
+      const merged = freshAnswers.map((item) => reviewedByCode.has(item.code) ? reviewedByCode.get(item.code) : item);
+      const present = new Set(freshAnswers.map((item) => item.code));
+      for (const item of reviewed) if (!present.has(item.code)) merged.push(item);
+      await patchInterview(id, {
+        analysis: {
+          ...base,
+          formAnswers: merged,
+          humanReviewPreservedAt: Date.now(),
+          humanReviewPreservedAfterReanalysisError: !latest.analysis
+        }
+      });
+    }
+  }
+  return getInterview(id);
 }
