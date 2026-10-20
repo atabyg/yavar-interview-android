@@ -100,7 +100,7 @@ export async function processInterview(id, options = {}) {
       return;
     }
     if (!iv.analysis) {
-      await patchInterview(id, { status: "analyzing", error: "", step: "تحلیل و امتیازدهی بر اساس پرسش‌نامهٔ انتخابی" });
+      await patchInterview(id, { status: "analyzing", error: "", step: "استخراج پیش‌نویس فرم و شواهد گفت‌وگو" });
       const qs = questionSetFor(iv.questionSet || s.questionSet);
       const a = await analyze(iv.transcript, iv, {
         provider: s.analyzeProvider,
