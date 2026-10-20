@@ -132,6 +132,20 @@ export default function Detail({ iv, onBack, onImportResult }) {
                 ))}
               </div>
             )}
+            {Array.isArray(a.formAnswers) && a.formAnswers.length > 0 && (
+              <div className="card">
+                <h4>پیش‌نویس فرم‌های ارجاع — نیازمند بازبینی کارشناس</h4>
+                <div className="mut" style={{ marginBottom: 8, lineHeight: 1.8 }}>پاسخ‌ها فقط از شواهد گفت‌وگو استخراج شده‌اند. موارد خالی به معنی «ثبت نشده در متن» است؛ این پیش‌نویس جایگزین فرم رسمی، امتیازدهی کارشناس، مشاهدهٔ رفتاری، رضایت یا امضا نیست.</div>
+                {a.formAnswers.map((item, k) => (
+                  <div key={item.code || k} style={{ padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
+                    <div className="row"><b className="grow">{item.formId || ""} · {item.question}</b><span className="pill">{item.confidence || "پایین"}</span></div>
+                    <div style={{ marginTop: 5 }}>{item.answered && item.answer ? item.answer : "ثبت نشده در متن"}</div>
+                    {item.evidence && <div className="mut" style={{ marginTop: 4 }}>شاهد: {item.evidence}</div>}
+                    <div className="mut" style={{ marginTop: 3 }}>پیشنهاد هوش مصنوعی — تأییدنشده</div>
+                  </div>
+                ))}
+              </div>
+            )}
             {Array.isArray(a.transcriptWarnings) && a.transcriptWarnings.length > 0 && (
               <div className="card">
                 <h4>ابهام‌های متن و هشدارهای تشخیص</h4>
