@@ -3,6 +3,7 @@
 import { QUESTION_SETS } from "./questions.js";
 import { COMPETENCIES } from "./openai.js";
 import { dayKey, dayLabel } from "./daily.js";
+import { REFERRAL_AI_GUIDE, REFERRAL_QUESTIONS } from "./referral-forms.js";
 
 export const RESULT_VERSION = "YAVAR_RESULT v1";
 export const FORM_CODES = { quick: "Q5", critical12: "Q12", full: "Q24" };
@@ -139,6 +140,17 @@ function interpretBlock(f) {
     const m = k.match(/^Q\d{1,2}-\d{2,3}$/);
     if (m && !spec.items.some((i) => i.code === k)) warnings.push("کد " + k + " در فرم «" + spec.label + "» وجود ندارد و نادیده گرفته شد.");
   }
+  const referralAnswers = REFERRAL_QUESTIONS.map((item) => {
+    const answer = oneLine(f[item.code]);
+    const answered = !isEmptyValue(answer);
+    return {
+      code: item.code, formId: item.code.slice(0, 3), question: item.question, answered,
+      answer: answered ? answer : "",
+      evidence: answered && !isEmptyValue(f[item.code + ".EVIDENCE"]) ? oneLine(f[item.code + ".EVIDENCE"]) : "",
+      confidence: answered ? normConf(f[item.code + ".CONF"]) : "پایین",
+      reviewStatus: "ai_draft"
+    };
+  });
   const comps = COMPETENCIES.map((name, i) => {
     const code = "C" + (i + 1);
     const raw = f[code];
@@ -166,13 +178,13 @@ function interpretBlock(f) {
     caseNumber: normalizeDigits(f.CASE_NUMBER || "").replace(/\D/g, "").slice(0, 6),
     date: normalizeDate(f.DATE_JALALI),
     clientName: isEmptyValue(f.CLIENT_NAME) ? "" : oneLine(f.CLIENT_NAME),
-    answers, comps, stats, warnings,
+    answers, referralAnswers, comps, stats, warnings,
     summary: isEmptyValue(f.SUMMARY) ? "" : oneLine(f.SUMMARY),
     strengths: splitList(f.STRENGTHS), weaknesses: splitList(f.WEAKNESSES), redFlags: splitList(f.REDFLAGS), followUp: splitList(f.FOLLOWUP),
     aiWarnings: splitList(f.WARNINGS),
     transcript: String(f.TRANSCRIPT || "").trim()
   };
-  row.hasContent = answers.some((a) => a.answered) || comps.some((c) => c.score !== null) || !!row.summary || !!row.transcript ||
+  row.hasContent = answers.some((a) => a.answered) || referralAnswers.some((a) => a.answered) || comps.some((c) => c.score !== null) || !!row.summary || !!row.transcript ||
     row.strengths.length + row.weaknesses.length + row.redFlags.length + row.followUp.length > 0;
   return row;
 }
@@ -207,16 +219,19 @@ export function matchRecord(row, items) {
 
 // ------------------------------------------------------------------ result -> interview patch
 export function buildAnalysis(row) {
+  const hasReferral = Array.isArray(row.referralAnswers) && row.referralAnswers.some((a) => a.answered);
+  const referralAnswers = hasReferral ? row.referralAnswers : row.answers;
   return {
     summary: row.summary,
-    overall: row.stats.overall,
-    verdict: row.stats.verdict || VERDICTS.mid,
-    competencies: row.comps.filter((c) => c.score !== null).map((c) => ({ name: c.name, score: c.score, note: c.note || "شواهد کافی نبود" })),
+    overall: hasReferral ? null : row.stats.overall,
+    verdict: hasReferral ? "پیش‌نویس فرم ارجاع — تأییدنشده" : (row.stats.verdict || VERDICTS.mid),
+    competencies: hasReferral ? [] : row.comps.filter((c) => c.score !== null).map((c) => ({ name: c.name, score: c.score, note: c.note || "شواهد کافی نبود" })),
     strengths: row.strengths, weaknesses: row.weaknesses, redFlags: row.redFlags, followUp: row.followUp,
     cleanTranscript: "", qaPairs: [],
     transcriptWarnings: [...row.aiWarnings, ...row.warnings].slice(0, 10),
-    formAnswers: row.answers, coverage: row.stats.coverage, answeredCount: row.stats.answered,
-    formId: row.setId, formCode: row.formCode,
+    formAnswers: referralAnswers, coverage: coverageOf(referralAnswers), answeredCount: referralAnswers.filter((a) => a.answered).length,
+    formId: hasReferral ? "referral" : row.setId, formCode: hasReferral ? "F01/F02" : row.formCode,
+    formReference: hasReferral ? "PDF F00-F08 / 22 pages / v5 corrected" : "",
     source: "external", model: "هوش مصنوعی بیرونی", provider: "external", at: Date.now()
   };
 }
@@ -271,6 +286,13 @@ function recordTemplate(rec) {
   L.push("SOURCE_TRANSCRIPT_FILE: " + transcriptFileName(rec));
   L.push("DATA_FORMAT: plain UTF-8 text; NOT encrypted; NO password; NO Base64; NO hidden encoding.");
   L.push("# --- پاسخ سؤال‌ها: برای هر کد سه خط (پاسخ، شاهد، اطمینان) ---");
+  L.push("# --- پیش‌نویس فیلدهای مجاز فرم ارجاع F01/F02؛ کدها شناسهٔ داخلی برنامه‌اند، نه کد چاپی فرم ---");
+  for (const item of REFERRAL_QUESTIONS) {
+    L.push("# " + item.code + " | " + item.question);
+    L.push(item.code + ": ");
+    L.push(item.code + ".EVIDENCE: ");
+    L.push(item.code + ".CONF: ");
+  }
   for (const it of spec.items) {
     L.push("# " + it.code + " | " + it.question);
     L.push(it.code + ": ");
@@ -298,7 +320,8 @@ export function buildExchangePrompt(records, opts = {}) {
   L.push("#YAVAR_EXCHANGE_PROMPT v1");
   L.push("INTEROPERABILITY: همهٔ فایل‌ها بدون رمزگذاری یا رمز عبور هستند. متن UTF-8 معمولی و برچسب‌ها و کدها اسم‌های خوانای فیلد هستند؛ هیچ رمزگشایی، بازکردن قفل، Base64 یا تبدیل مخفی لازم نیست.");
   L.push("AUDIO NOTE: صوت تا حد امکان به WAV استاندارد PCM تک‌کاناله 16kHz تبدیل شده است. پشتیبانی از دریافت یا شنیدن صوت به برنامه و مدل مقصد وابسته است و یکسان نیست؛ اگر رابط تو صوت را نمی‌پذیرد یا نمی‌توانی واقعاً آن را بشنوی، فایل متن transcript را تحلیل کن و هرگز ادعا نکن صوت را شنیده‌ای.");
-  L.push("نقش تو: دستیار استخراج اطلاعات از گفت‌وگوی فارسی مصاحبه با مددجو یا متقاضی، قابل‌استفاده در هر مدل هوش مصنوعی که متن ساده را می‌خواند.");
+  L.push("نقش تو: دستیار استخراج اطلاعات از گفت‌وگوی فارسی مددجو برای پیش‌نویس فرم‌های ارجاع شغلی یاورشهرها؛ از متن ساده و بدون رمزگذاری استفاده کن.");
+  L.push(REFERRAL_AI_GUIDE);
   L.push("ورودی: پرامپت متنی حاضر، فایل(های) صوتی با نام‌های ذکرشده و در صورت موجود بودن یک فایل TXT با متن گفت‌وگوی همان رکورد. فایل TXT مرجع پشتیبان برای رابط‌هایی است که صوت را نمی‌پذیرند.");
   L.push("کار تو: اگر ابزار صوتی در دسترس است، صوت همان رکورد را بررسی و با متن TXT مقایسه کن؛ اگر ابزار صوتی در دسترس نیست، فقط از متن TXT استفاده کن و این محدودیت را در WARNINGS گزارش کن. سپس قالب همان رکورد را پر کن.");
   if (opts.dayKey) L.push("روز (شمسی): " + opts.dayKey);
@@ -308,7 +331,7 @@ export function buildExchangePrompt(records, opts = {}) {
   L.push("2) هر کد Q..-.. فقط وقتی پاسخ دارد که پاسخ همان سؤال در صوت واقعاً آمده باشد. اگر سؤال پرسیده نشد، پاسخ داده نشد یا نامفهوم بود، دقیقاً EMPTY بنویس (برای EVIDENCE و CONF همان کد هم EMPTY).");
   L.push("3) پاسخ هر کد: خلاصهٔ وفادار حرف مددجو/متقاضی در یک خط (حداکثر ۴۰ واژه). EVIDENCE: عین یک عبارت کوتاه از صوت (حداکثر ۲۵ واژه). CONF: فقط HIGH یا MEDIUM یا LOW.");
   L.push("4) هر مقدار فقط در یک خط باشد؛ از Markdown، جدول، فهرست شماره‌دار، کدبلاک و خط جدید داخل مقدار استفاده نکن. خود فایل در قالب متن ساده است و رمزگذاری یا قفل ندارد.");
-  L.push("5) نمرهٔ C1 تا C6: عدد صحیح ۰ تا ۱۰ فقط بر پایهٔ شواهد صوت؛ اگر شواهد کافی نیست EMPTY بنویس و دلیلش را در NOTE بیاور.");
+  L.push("5) هیچ نمرهٔ استخدامی یا مددکاری نساز. امتیازهای F01.D، مشاهدهٔ رفتاری F02.B، موانع ترخیص، سطح نهایی، رضایت، امضا و تأییدهای رسمی را پر نکن؛ فقط کارشناس مسئول مجاز است.");
   L.push("6) کلیدها و کدها (مثل Q12-03.EVIDENCE) را ترجمه یا تغییر نده. فقط مقدارها فارسی باشند؛ مقدارهای CONF و EMPTY انگلیسی بمانند.");
   L.push("7) RECORD_ID، CASE_NUMBER، DATE_JALALI و FORM را عیناً از قالب بگذار.");
   L.push("8) فهرست‌ها (STRENGTHS، WEAKNESSES، REDFLAGS، FOLLOWUP، WARNINGS): هر مورد را با علامت | جدا کن؛ حداکثر ۵ مورد؛ اگر چیزی نبود EMPTY.");
@@ -321,7 +344,7 @@ export function buildExchangePrompt(records, opts = {}) {
   L.push("- نتیجه: OVERALL از ۷۰ به بالا «" + VERDICTS.high + "»؛ ۵۰ تا ۶۹ «" + VERDICTS.mid + "»؛ کمتر از ۵۰ «" + VERDICTS.low + "» (برنامه خودش تعیین می‌کند؛ لازم نیست بنویسی)");
   L.push("- ترتیب شایستگی‌ها: " + COMPETENCIES.map((n, i) => "C" + (i + 1) + "=" + n).join("، "));
   L.push("");
-  L.push("فرم‌ها: Q5 = سوالات فوری (۵ سؤال)، Q12 = ۱۲ سؤال حیاتی، Q24 = پرسش‌نامهٔ کامل (۲۴ سؤال). هر رکورد دقیقاً یکی از این‌هاست و در خط FORM قالبش آمده است.");
+  L.push("عنوان نمایشی مجموعهٔ پرسش‌ها در برنامه «سؤالات ارجاع» است. Q5/Q12/Q24 فقط شناسهٔ داخلی مجموعهٔ راهنمای گفت‌وگو هستند و به معنی فرم رسمی PDF نیستند. مرجع پیوست‌شده F00 تا F08 را دارد؛ F09 موجود نیست.");
   L.push("");
   L.push("رکوردها:");
   list.forEach((rec, n) => {
