@@ -200,7 +200,7 @@ test("analysis requests route through Hugging Face Inference Providers with one 
   }
 });
 
-test("unsupported JSON mode retries once without response_format before validating the result", async () => {
+test("unsupported JSON mode retries once and still returns referral-only output", async () => {
   const previous = globalThis.fetch;
   const modelResult = {
     summary: "پاسخ بدون JSON mode",
@@ -231,7 +231,6 @@ test("unsupported JSON mode retries once without response_format before validati
     assert.equal(result.overall, null);
     assert.equal(result.competencies.length, 0);
     assert.equal(result.verdict, "پیش‌نویس فرم ارجاع — تأییدنشده");
-    assert.equal(result.competencies.length, 6);
   } finally {
     globalThis.fetch = previous;
   }
