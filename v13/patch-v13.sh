@@ -176,6 +176,19 @@ PY
 sed -i -E "s/versionCode [0-9]+/versionCode 13/; s/versionName ['\"][^'\"]*['\"]/versionName \"13.0.0\"/" "$GRADLE"
 grep -Eq 'versionCode 13' "$GRADLE" || { echo "::error::versionCode 13 not set"; exit 1; }
  grep -Eq 'versionName [\"'\\''\"]13.0.0[\"'\\''\"]' "$GRADLE" || { echo "::error::versionName 13.0.0 not set"; exit 1; }
+# Pin NDK r28b for 16KB ELF page alignment; this patch is idempotent.
+python3 - "$GRADLE" <<'PY'
+import sys
+p=sys.argv[1]
+lines=open(p,encoding='utf-8').read().splitlines()
+idx=next((i for i,line in enumerate(lines) if line.strip()=='android {'),None)
+if idx is None: raise SystemExit('android { block not found in app/build.gradle')
+existing=next((i for i,line in enumerate(lines) if line.strip().startswith('ndkVersion ')),None)
+if existing is None: lines.insert(idx+1, '    ndkVersion "28.2.13676358"')
+else: lines[existing]='    ndkVersion "28.2.13676358"'
+open(p,'w',encoding='utf-8').write('\n'.join(lines)+'\n')
+PY
+grep -Eq 'ndkVersion "28.2.13676358"' "$GRADLE" || { echo "::error::NDK r28b pin missing"; exit 1; }
 
 # 3) Optional stable signing from GitHub Actions Secrets; never store keystore bytes/passwords in the public repository.
 # Set YAVAR_KEYSTORE_B64, YAVAR_STORE_PASSWORD, YAVAR_KEY_ALIAS and YAVAR_KEY_PASSWORD in repository Actions secrets.
