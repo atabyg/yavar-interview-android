@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 MANIFEST=android/app/src/main/AndroidManifest.xml
+GRADLE=android/app/build.gradle
 
 add_perm() {
   local permission="$1"
@@ -346,4 +347,4 @@ grep -q 'path "src/main/cpp/CMakeLists.txt"' "$GRADLE" || { echo "::error::CMake
 test -s "$NATIVE_DIR/whisper.cpp/CMakeLists.txt"
 test -s "$JAVA_NATIVE_DIR/OfflineWhisperPlugin.java"
 
-echo "Android v9 patch complete; local Whisper engine configured."
+echo "Android v13 base patch complete; local Whisper engine configured."
