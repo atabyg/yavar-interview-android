@@ -1,5 +1,15 @@
 const UNKNOWN = "نامشخص";
 
+// Distinguish a valid short transcript from an empty transcription and from text
+// that is too weak for automatic semantic analysis.
+export function transcriptStageError(transcript, transcribeOnly = false) {
+  const value = String(transcript || "").trim();
+  if (!value) return "تبدیل صوت به متن، متن قابل‌استفاده‌ای تولید نکرد؛ فایل صوتی محفوظ است. کیفیت صدا و موتور تبدیل را بررسی کنید.";
+  if (transcribeOnly) return "";
+  if (value.length < 20) return "متن قابل‌استفاده برای تحلیل کافی نیست. متن و صدای ضبط‌شده را بازبینی کنید.";
+  return "";
+}
+
 export function transcriptGuidance(enabled = true) {
   const common = "قاعدهٔ الزامی: از شنیده‌نشدن یا مبهم‌بودن، پاسخ نساز. اصلاح املای فارسی، علائم نگارشی و واژهٔ واضح مجاز است، اما بازنویسی معنایی بدون شاهد ممنوع است. نمره را فقط به شواهد روشن دربارهٔ پرسش‌نامه و شغل نسبت بده؛ صدای نامفهوم، تکرار و پاسخ قابل‌انتساب‌نبودن امتیاز مثبت یا منفی نیست. اگر شواهد کافی نیست، صریح بگو «شواهد کافی نبود» و برای رفع ابهام سؤال پیگیری پیشنهاد کن.";
   if (!enabled) return common + " متن پاک‌سازی‌شده را محافظه‌کارانه نگه دار و از ادعای تشخیص قطعی گوینده خودداری کن.";
