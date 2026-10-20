@@ -129,7 +129,7 @@ export default function ImportResult({ items, initialText = "", initialName = ""
                       {pool.map((x) => <option key={x.id} value={x.id}>{(x.candidate || x.title) + " — " + (x.caseNumber || "بدون شماره")}</option>)}
                     </select>
                   </div>}
-              {rec && rec.analysis && <div className="mut" style={{ color: "var(--terra)", marginTop: 4 }}>تحلیل قبلی این پرونده با این نتیجه جایگزین می‌شود.</div>}
+              {rec && rec.analysis && <div className="mut" style={{ color: "var(--terra)", marginTop: 4 }}>{Array.isArray(rec.analysis.formAnswers) && rec.analysis.formAnswers.some((x) => x && x.reviewStatus === "human_reviewed") ? "تحلیل قبلی و بازبینی‌های انسانی این پرونده با نتیجهٔ واردشده جایگزین می‌شود." : "تحلیل قبلی این پرونده با این نتیجه جایگزین می‌شود."}</div>}
               {r.warnings.length > 0 && <ul className="l" style={{ marginTop: 6 }}>{r.warnings.slice(0, 5).map((w, k) => <li key={k}>{w}</li>)}</ul>}
             </div>
           );
