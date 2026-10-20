@@ -5,6 +5,7 @@ import { analyze, friendly, transcribe } from "./openai";
 import { questionSetFor } from "./questions";
 import { OfflineWhisper } from "./native-bridge";
 import { transcribeOfflineBlob } from "./offline-transcriber";
+import { transcriptStageError } from "./transcript-quality.js";
 
 const running = new Set();
 const ext = (mime) => (/mp4/.test(mime) ? "m4a" : /ogg/.test(mime) ? "ogg" : "webm");
