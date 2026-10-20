@@ -81,9 +81,8 @@ export async function processInterview(id, options = {}) {
       iv = await getInterview(id);
     }
 
-    if ((iv.transcript || "").trim().length < 20) {
-      throw new Error("متن قابل‌استفاده برای تحلیل کافی نیست. نویز یا صدای کم را بررسی کنید و متن را بازبینی کنید.");
-    }
+    const transcriptError = transcriptStageError(iv.transcript, options.transcribeOnly === true);
+    if (transcriptError) throw new Error(transcriptError);
 
     if (options.transcribeOnly) {
       await patchInterview(id, { status: "transcribed", error: "", step: "" });
