@@ -1,98 +1,211 @@
 import { useEffect, useRef, useState } from "react";
-import { X, ScanFace } from "lucide-react";
+import { X, ScanFace, UserX } from "lucide-react";
 import QRCode from "qrcode";
-import { embed, modelAvailable } from "../face-embedder";
-import { detector, detect, alignedCrop, sharpness } from "../face-detect";
-import { findMatch, enroll, refine, qrPayload, loadFaces } from "../face-id";
+import { prepare, detectFaces, alignedCanvas, cropQuality, embedAligned, releaseEngine, FaceEngineError } from "../face-engine";
+import { viewGeometry, faceFit, isStable } from "../face-math";
+import { loadFaces, findMatch, chooseCaseNumber, commitFace, averageEmbeddings, qrPayload, faceCount, forgetAllFaces } from "../face-id";
+import { getSettings, saveSettings } from "../settings";
 import { toast } from "../ui";
 
-const STABLE_FRAMES = 6, MIN_SHARP = 60, SHOTS = 5;
+const STABLE_FRAMES = 4, SHOTS = 5;
+const MIN_BRIGHT = 55, MAX_BRIGHT = 215, MIN_SHARP = 20; // tune on the real phone
+const CONFIRM_MS = { match: 4500, new: 3000 };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Fully automatic: front camera opens, face is checked against the circle, scan runs by itself,
-// result shows ~2.5 s, then the screen closes and onResult(caseNumber) is called. No buttons needed.
-export default function FaceScan({ usedNumbers = [], onResult, onClose }) {
-  const video = useRef(null), stream = useRef(null), alive = useRef(true);
-  const [msg, setMsg] = useState("در حال آماده‌سازی دوربین…");
+// Fully automatic: the front camera opens inside the app, the face is checked against the guide circle,
+// the scan runs by itself, the result shows for a few seconds and the screen closes (onResult).
+// The only buttons: close, "this is not that person", and choosing between look-alikes.
+export default function FaceScan({ items = [], currentNumber = "", usedNumbers = [], onResult, onClose }) {
+  const videoRef = useRef(null), streamRef = useRef(null), run = useRef(0), timer = useRef(null);
+  const live = useRef({ items, currentNumber, usedNumbers });
+  live.current = { items, currentNumber, usedNumbers };
+  const [phase, setPhase] = useState("loading"); // loading | scan | confirm | choose | error
+  const [hint, setHint] = useState("");
   const [ok, setOk] = useState(false);
-  const [done, setDone] = useState(null);
+  const [err, setErr] = useState("");
+  const [pending, setPending] = useState(null);
+  const [cands, setCands] = useState([]);
+  const [count, setCount] = useState(0);
 
-  useEffect(() => {
-    alive.current = true;
-    (async () => {
-      try {
-        if (!(await modelAvailable())) { setMsg("مدل تشخیص چهره (face-embed.onnx) در برنامه نصب نشده است."); return; }
-        await detector();
-        stream.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 640, height: 480 }, audio: false });
-        video.current.srcObject = stream.current; await video.current.play();
-        loop();
-      } catch (e) { setMsg(e && e.name === "NotAllowedError" ? "دسترسی دوربین داده نشد؛ از تنظیمات گوشی اجازه دهید." : "شروع دوربین یا مدل ممکن نشد."); }
-    })();
-    return () => { alive.current = false; stream.current && stream.current.getTracks().forEach((t) => t.stop()); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // returns {crop} when the face is well placed, sharp enough, else {hint}
-  function check() {
-    const v = video.current;
-    const f = detect(v, performance.now());
-    if (!f) return { hint: "چهره پیدا نشد؛ فقط یک چهره مقابل دوربین باشد." };
-    if (Math.abs(f.cx - 0.5) > 0.1 || Math.abs(f.cy - 0.5) > 0.12) return { hint: "چهره را وسط دایره ببرید." };
-    if (f.w < 0.28) return { hint: "کمی نزدیک‌تر شوید." };
-    if (f.w > 0.55) return { hint: "کمی دورتر شوید." };
-    const crop = alignedCrop(v, f);
-    if (sharpness(crop) < MIN_SHARP) return { hint: "تصویر تار یا تاریک است؛ نور را بیشتر کنید و ثابت بمانید." };
-    return { crop };
+  const alive = (t) => run.current === t;
+  const nameFor = (no) => {
+    const r = live.current.items.find((i) => i.caseNumber === no && (i.candidate || "").trim());
+    return r ? r.candidate.trim() : "";
+  };
+  function stopCamera() {
+    const s = streamRef.current; streamRef.current = null;
+    if (s) s.getTracks().forEach((t) => t.stop());
+    const v = videoRef.current; if (v) v.srcObject = null;
+  }
+  function fail(e) {
+    stopCamera();
+    const msg = e instanceof FaceEngineError ? e.message
+      : e && e.name === "NotAllowedError" ? "دسترسی دوربین داده نشد؛ از تنظیمات گوشی اجازهٔ دوربین را بدهید."
+      : e && e.name === "NotFoundError" ? "دوربین جلوی گوشی پیدا نشد."
+      : "خطا در تشخیص چهره: " + (e && e.message ? e.message : e);
+    setErr(msg); setPhase("error");
   }
 
-  async function loop() {
-    let stable = 0;
-    while (alive.current) {
-      const r = check();
-      setOk(!!r.crop);
-      if (!r.crop) { stable = 0; setMsg(r.hint); await new Promise((x) => setTimeout(x, 120)); continue; }
-      setMsg("ثابت بمانید…");
-      if (++stable < STABLE_FRAMES) { await new Promise((x) => setTimeout(x, 100)); continue; }
-      const shots = [];
-      while (shots.length < SHOTS && alive.current) {
-        const s = check();
-        if (!s.crop) break;
-        shots.push(await embed(s.crop));
-        await new Promise((x) => setTimeout(x, 150));
-      }
-      if (shots.length < SHOTS) { stable = 0; continue; }
-      await finish(shots);
+  useEffect(() => {
+    const token = ++run.current;
+    start(token);
+    faceCount().then(setCount).catch(() => {});
+    return () => { run.current++; clearTimeout(timer.current); stopCamera(); releaseEngine(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function start(token) {
+    try {
+      await prepare();
+      if (!alive(token)) return;
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+      if (!alive(token)) { stream.getTracks().forEach((t) => t.stop()); return; }
+      streamRef.current = stream;
+      const v = videoRef.current; v.srcObject = stream; await v.play();
+      setPhase("scan"); setHint("چهره را داخل دایره قرار دهید.");
+      await scanLoop(token);
+    } catch (e) { if (alive(token)) fail(e); }
+  }
+
+  // One detection result -> { ok, det, geo } or { ok:false, hint }
+  function judge(dets, v) {
+    if (!dets.length) return { ok: false, hint: "چهره‌ای دیده نمی‌شود؛ مقابل دوربین بایستید." };
+    const [a, b] = dets;
+    if (b && b.score >= 0.6 && b.h > 0.5 * a.h) return { ok: false, hint: "فقط یک نفر مقابل دوربین باشد." };
+    const geo = viewGeometry(v.videoWidth, v.videoHeight);
+    const fit = faceFit(a, geo);
+    return fit.ok ? { ok: true, det: a, geo } : { ok: false, hint: fit.hint };
+  }
+
+  async function scanLoop(token) {
+    let prev = null, stable = 0;
+    while (alive(token)) {
+      const v = videoRef.current;
+      if (!v || v.readyState < 2 || !v.videoWidth) { await sleep(100); continue; }
+      const j = judge(await detectFaces(v), v);
+      if (!alive(token)) return;
+      setOk(j.ok); setHint(j.ok ? "ثابت بمانید…" : j.hint);
+      if (!j.ok) { prev = null; stable = 0; await sleep(80); continue; }
+      stable = isStable(prev, j.det, j.geo.D) ? stable + 1 : 1; prev = j.det;
+      if (stable < STABLE_FRAMES) { await sleep(30); continue; }
+      const shots = await capture(token, v);
+      if (!alive(token)) return;
+      if (!shots) { prev = null; stable = 0; continue; }
+      await analyse(token, shots);
       return;
     }
   }
 
-  async function finish(shots) {
-    const faces = await loadFaces();
-    const m = findMatch(shots[0], faces);
-    if (m.status === "ambiguous") { toast("چند پروندهٔ بسیار مشابه یافت شد؛ شمارهٔ پرونده را دستی وارد کنید."); onClose(); return; }
-    let caseNo;
-    if (m.status === "match") { caseNo = m.caseNumber; await refine(caseNo, shots); }
-    else caseNo = await enroll(shots, usedNumbers);
-    const qr = await QRCode.toDataURL(qrPayload(caseNo), { margin: 1, width: 220 });
-    setDone({ caseNo, qr, isNew: m.status === "new" });
-    stream.current && stream.current.getTracks().forEach((t) => t.stop());
-    setTimeout(() => alive.current && onResult(caseNo), 2500);
+  async function capture(token, v) {
+    const shots = []; let misses = 0;
+    setHint("ثابت بمانید… در حال ثبت");
+    while (shots.length < SHOTS && alive(token)) {
+      const j = judge(await detectFaces(v), v);
+      if (!j.ok) { if (++misses > 3) return null; continue; }
+      const crop = alignedCanvas(v, j.det.lm), q = cropQuality(crop);
+      if (q.bright < MIN_BRIGHT || q.bright > MAX_BRIGHT) { setHint("نور مناسب نیست؛ جای روشن‌تر یا بدون نور مستقیم بایستید."); if (++misses > 3) return null; continue; }
+      if (q.sharp < MIN_SHARP) { setHint("تصویر تار است؛ گوشی را ثابت نگه دارید."); if (++misses > 3) return null; continue; }
+      shots.push(await embedAligned(crop));
+    }
+    return shots.length === SHOTS ? shots : null;
   }
 
+  async function analyse(token, shots) {
+    const faces = await loadFaces();
+    if (!alive(token)) return;
+    const q = averageEmbeddings(shots);
+    stopCamera();
+    const m = findMatch(q, faces);
+    if (m.status === "ambiguous") {
+      setCands(m.candidates.map((c) => ({ ...c, name: nameFor(c.caseNumber) })));
+      setPending({ q, faces }); setPhase("choose"); return;
+    }
+    if (m.status === "match") { await decide({ kind: "match", caseNo: m.caseNumber, q }); return; }
+    await decide({ kind: "new", ...planNew(faces, q, true) });
+  }
+
+  // A new face gets the number already typed in the form when it is free (links an existing case), else a fresh one.
+  function planNew(faces, q, usePreferred) {
+    const { currentNumber: cur, usedNumbers: used, items: list } = live.current;
+    const caseNo = chooseCaseNumber(usePreferred ? cur : "", faces, used);
+    return { caseNo, q, linked: usePreferred && caseNo === cur && list.some((i) => i.caseNumber === caseNo) };
+  }
+
+  async function decide(p) {
+    let qr = "";
+    try { qr = await QRCode.toDataURL(qrPayload(p.caseNo), { margin: 1, width: 200 }); } catch (e) { /* QR is optional */ }
+    const full = { ...p, qr, name: nameFor(p.caseNo) }, token = run.current;
+    setPending(full); setPhase("confirm");
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => { if (alive(token)) commit(full); }, CONFIRM_MS[p.kind]);
+  }
+
+  async function commit(p) {
+    try {
+      await commitFace(p.caseNo, p.q);
+      const used = Array.from(new Set([...(getSettings().usedCaseNumbers || []), p.caseNo]));
+      await saveSettings({ usedCaseNumbers: used });
+    } catch (e) {
+      toast("ذخیرهٔ داده چهره ناموفق بود: " + (e && e.message ? e.message : e));
+      onClose(); return;
+    }
+    onResult(p.caseNo, p.name || nameFor(p.caseNo));
+  }
+
+  async function reject() { // "this is not that person" -> brand-new case with a fresh number
+    clearTimeout(timer.current);
+    const faces = await loadFaces();
+    await decide({ kind: "new", ...planNew(faces, pending.q, false) });
+  }
+  async function pick(caseNo) { await decide({ kind: "match", caseNo, q: pending.q }); }
+  async function pickNone() { await decide({ kind: "new", ...planNew(pending.faces, pending.q, false) }); }
+  async function wipe() {
+    if (!window.confirm("همهٔ داده‌های چهرهٔ ذخیره‌شده روی این گوشی حذف شود؟ پرونده‌ها و شماره‌ها حذف نمی‌شوند.")) return;
+    await forgetAllFaces(); setCount(0); toast("داده‌های چهره حذف شد.");
+  }
+
+  const camera = phase === "loading" || phase === "scan";
   return (
-    <div className="card" style={{ position: "fixed", inset: 0, zIndex: 50, overflow: "auto" }}>
-      <div className="row"><ScanFace size={18} /><b className="grow">ثبت چهره (آفلاین)</b><button className="btn alt sm" onClick={onClose}><X size={15} /></button></div>
-      {!done && <>
-        <div style={{ position: "relative", marginTop: 10 }}>
-          <video ref={video} playsInline muted style={{ width: "100%", borderRadius: 12, transform: "scaleX(-1)" }} />
-          <div style={{ position: "absolute", inset: "12% 25%", border: "4px solid " + (ok ? "#2ecc71" : "#fff"), borderRadius: "50%" }} />
+    <div className="card" style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, overflow: "auto", borderRadius: 0 }}>
+      <style>{"@keyframes yvbar{from{width:100%}to{width:0}}"}</style>
+      <div className="row"><ScanFace size={18} /><b className="grow">ثبت چهره (آفلاین)</b><button className="btn alt sm" onClick={onClose} aria-label="بستن"><X size={15} /></button></div>
+
+      {camera && <>
+        <div style={{ position: "relative", width: "100%", paddingTop: "133.33%", marginTop: 10, borderRadius: 16, overflow: "hidden", background: "#000" }}>
+          <video ref={videoRef} playsInline muted style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
+          <div style={{ position: "absolute", left: "15%", width: "70%", top: "23.75%", height: "52.5%", borderRadius: "50%", border: "4px solid " + (ok ? "#2ecc71" : "#fff"), boxShadow: "0 0 0 999px rgba(0,0,0,.5)", transition: "border-color .2s" }} />
+          {phase === "loading" && <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", textAlign: "center", padding: 20 }}>در حال آماده‌سازی دوربین و مدل چهره…</div>}
         </div>
-        <div className="mut" style={{ margin: "8px 0" }}>{msg}</div>
-        <div className="mut" style={{ fontSize: 12 }}>تصویر ذخیره نمی‌شود؛ فقط بردار عددی رمزنگاری‌شده روی همین گوشی نگه‌داری می‌شود.</div>
+        <div className="mut" style={{ margin: "10px 0", minHeight: 24, textAlign: "center" }}>{hint}</div>
+        <div className="mut" style={{ fontSize: 12, lineHeight: 1.8 }}>همه‌چیز روی همین گوشی انجام می‌شود. تصویر ذخیره نمی‌شود و فقط بردار عددی رمزنگاری‌شده نگه داشته می‌شود.</div>
       </>}
-      {done && <div style={{ textAlign: "center", marginTop: 12 }}>
-        <div className="mut">{done.isNew ? "پروندهٔ جدید ساخته شد" : "پروندهٔ قبلی شناسایی شد"}</div>
-        <div className="timer en">{done.caseNo}</div>
-        <img src={done.qr} alt="QR" />
+
+      {phase === "error" && <div style={{ marginTop: 16, lineHeight: 1.9 }}>
+        <div style={{ color: "var(--terra)" }}>{err}</div>
+        <div className="mut" style={{ marginTop: 8 }}>می‌توانید شمارهٔ پرونده را دستی وارد کنید یا دکمهٔ «شمارهٔ جدید» را بزنید.</div>
+        <button className="btn alt" style={{ marginTop: 12 }} onClick={onClose}>بستن</button>
       </div>}
+
+      {phase === "choose" && <div style={{ marginTop: 16 }}>
+        <div className="mut" style={{ marginBottom: 8 }}>چند پروندهٔ بسیار شبیه پیدا شد؛ کدام یک است؟</div>
+        {cands.map((c) => <button key={c.caseNumber} className="btn alt" style={{ width: "100%", marginBottom: 8 }} onClick={() => pick(c.caseNumber)}>{c.name ? c.name + " — " : ""}{c.caseNumber}</button>)}
+        <button className="btn" style={{ width: "100%" }} onClick={pickNone}>هیچ‌کدام؛ پروندهٔ جدید</button>
+      </div>}
+
+      {phase === "confirm" && pending && <div style={{ textAlign: "center", marginTop: 14 }}>
+        <div className="mut">{pending.kind === "match" ? "پروندهٔ قبلی شناسایی شد" : pending.linked ? "چهره به پروندهٔ موجود گره خورد" : "پروندهٔ جدید ساخته شد"}</div>
+        {pending.name && <div style={{ fontSize: 18, fontWeight: 700, marginTop: 6 }}>{pending.name}</div>}
+        <div className="timer en" style={{ marginTop: 6 }}>{pending.caseNo}</div>
+        {pending.qr && <img src={pending.qr} alt="QR" width="200" height="200" style={{ background: "#fff", borderRadius: 8 }} />}
+        <div style={{ height: 4, background: "rgba(127,127,127,.25)", borderRadius: 2, margin: "12px 0", overflow: "hidden" }}>
+          <div key={pending.caseNo + pending.kind} style={{ height: "100%", background: "var(--teal)", animation: "yvbar " + CONFIRM_MS[pending.kind] + "ms linear forwards" }} />
+        </div>
+        <button className="btn alt" onClick={reject}><UserX size={17} /> این شخص نیست</button>
+      </div>}
+
+      {count > 0 && (phase === "scan" || phase === "error") && <details style={{ marginTop: 14 }}>
+        <summary className="mut" style={{ cursor: "pointer", fontSize: 12 }}>داده‌های چهره ({count} نفر)</summary>
+        <button className="btn alt sm" style={{ marginTop: 8 }} onClick={wipe}>حذف همهٔ داده‌های چهره</button>
+      </details>}
     </div>
   );
 }

@@ -4,8 +4,8 @@
   "version": "13.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "node scripts/prepare-face-assets.mjs && vite",
+    "build": "node scripts/prepare-face-assets.mjs && vite build",
     "test": "node --test tests/*.test.js && npm run build",
     "capacitor:sync:after": "bash patch-v13.sh"
   },
@@ -24,9 +24,8 @@
     "xlsx": "^0.18.5",
     "@fontsource/amiri": "^5.1.0",
     "@capacitor/app": "^6.0.2",
-    "onnxruntime-web": "^1.19.2",
-    "qrcode": "^1.5.4",
-    "@mediapipe/tasks-vision": "^0.10.14"
+    "onnxruntime-web": "~1.23.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
