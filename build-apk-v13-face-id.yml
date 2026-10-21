@@ -1,0 +1,239 @@
+# OPTIONAL CI workflow for the Face-ID branch (inactive while it sits at the repository root).
+# This integration cannot create files under .github/workflows, so it is parked here.
+# To activate it: open this file on GitHub (branch feature/version-13-face-id) -> pencil icon ->
+# click at the START of the file-name box (it contains only build-apk-v13-face-id.yml) and type  .github/workflows/
+# in front of the name -> Commit directly to the feature/version-13-face-id branch.
+# Committing it starts the build automatically; the result is written to branch `ci-status` (face-id-latest.md).
+name: Build Android APK (v13 Face-ID)
+
+on:
+  push:
+    branches: [feature/version-13-face-id]
+    paths:
+      - 'v13/**'
+      - '.github/workflows/build-apk-v13-face-id.yml'
+  workflow_dispatch:
+
+# contents:write is only used to publish a small status file to the ci-status branch;
+# pull-requests/issues:write only to comment on an open PR (both are optional conveniences).
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: build-face-id-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-face-id-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Validate and select v13 source
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/faceid-build.log"
+          {
+            test -f v13/package.json
+            test -f v13/capacitor.config.json
+            test -f v13/patch-v13.sh
+            test -f v13/patch-faceid.sh
+            test -f v13/src/App.jsx
+            test -f v13/src/face-engine.js
+            echo "BUILD_DIR=$GITHUB_WORKSPACE/v13" >> "$GITHUB_ENV"
+            python3 - v13/capacitor.config.json <<'PY'
+          import json, sys
+          d=json.load(open(sys.argv[1],encoding='utf-8'))
+          assert d.get('appId')=='com.yavarshahrha.interview', 'Unexpected applicationId; refusing to build'
+          print('applicationId preserved:',d['appId'])
+          PY
+          } 2>&1 | tee -a "$LOG"
+      - name: Restore logo and generate Android icons
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/faceid-build.log"
+          {
+            cd "$BUILD_DIR"
+            mkdir -p src/assets assets
+            if [ ! -f src/assets/logo.png ]; then
+              test -f assets/logo/p1.txt
+              cat assets/logo/p?.txt | base64 -d > src/assets/logo.png
+            fi
+            python3 -m pip install --disable-pip-version-check pillow
+            python3 -c "from PIL import Image; im=Image.open('src/assets/logo.png'); im.load(); print('logo ok', im.size)"
+            python3 make-icons.py
+          } 2>&1 | tee -a "$LOG"
+      - name: Fetch Face-ID models (pinned URLs, SHA-256 verified)
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/faceid-build.log"
+          { cd "$BUILD_DIR" && bash scripts/fetch-face-models.sh; } 2>&1 | tee -a "$LOG"
+      - name: Generate temporary lockfile, run tests and build web app
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/faceid-build.log"
+          {
+            cd "$BUILD_DIR"
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+            test -s package-lock.json
+            npm ci --no-audit --no-fund
+            npm test
+            test -s dist/index.html
+            for f in ort/ort.wasm.min.mjs ort/ort-wasm-simd-threaded.mjs ort/ort-wasm-simd-threaded.wasm models/face_detection_yunet_2023mar.onnx models/face_recognition_sface_2021dec.onnx; do
+              test -s "dist/$f" || { echo "::error::dist/$f missing after build"; exit 1; }
+            done
+            ls -l dist/ort dist/models
+          } 2>&1 | tee -a "$LOG"
+      - name: Verify models with ONNX Runtime in Node (non-blocking)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/faceid-build.log"
+          { cd "$BUILD_DIR" && node scripts/verify-face-models.mjs; } 2>&1 | tee -a "$LOG"
+      - name: Upload generated lockfile for pinning
+        uses: actions/upload-artifact@v6
+        with:
+          name: v13-face-id-generated-package-lock
+          path: v13/package-lock.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Generate Android project and apply v13 + Face-ID patches
+        env:
+          YAVAR_KEYSTORE_B64: ${{ secrets.YAVAR_KEYSTORE_B64 }}
+          YAVAR_STORE_PASSWORD: ${{ secrets.YAVAR_STORE_PASSWORD }}
+          YAVAR_KEY_ALIAS: ${{ secrets.YAVAR_KEY_ALIAS }}
+          YAVAR_KEY_PASSWORD: ${{ secrets.YAVAR_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/faceid-build.log"
+          {
+            cd "$BUILD_DIR"
+            npx cap add android
+            npx capacitor-assets generate --android
+            bash patch-android.sh
+            npx cap sync android
+            bash patch-v13.sh
+            grep -Eq 'versionCode 13' android/app/build.gradle
+            grep -Eq 'versionName "13.0.0"' android/app/build.gradle
+            ! grep -q 'versionCode 9' patch-android.sh
+            bash patch-faceid.sh
+            python3 - android/app/src/main/java <<'PY'
+          from pathlib import Path
+          import sys
+          files=list(Path(sys.argv[1]).rglob('MainActivity.java'))
+          if len(files)!=1: raise SystemExit(f'Expected one MainActivity.java, got {len(files)}')
+          s=files[0].read_text(encoding='utf-8')
+          a=s.find('registerPlugin(OfflineWhisperPlugin.class);')
+          b=s.find('super.onCreate(savedInstanceState);')
+          if a<0 or b<0 or a>b: raise SystemExit('OfflineWhisper registration must precede super.onCreate')
+          if 'registerPlugin(SharedInboxPlugin.class);' not in s: raise SystemExit('SharedInbox plugin not registered')
+          print('Plugin registration order verified')
+          PY
+          } 2>&1 | tee -a "$LOG"
+      - name: Build and verify Face-ID APK
+        env:
+          YAVAR_KEYSTORE_B64: ${{ secrets.YAVAR_KEYSTORE_B64 }}
+          YAVAR_STORE_PASSWORD: ${{ secrets.YAVAR_STORE_PASSWORD }}
+          YAVAR_KEY_ALIAS: ${{ secrets.YAVAR_KEY_ALIAS }}
+          YAVAR_KEY_PASSWORD: ${{ secrets.YAVAR_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/faceid-build.log"
+          {
+            cd "$BUILD_DIR/android"
+            chmod +x gradlew
+            ./gradlew assembleDebug --no-daemon --stacktrace
+            cd "$BUILD_DIR"
+            APK=android/app/build/outputs/apk/debug/app-debug.apk
+            test -s "$APK"
+            BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+            "$BT/aapt" dump badging "$APK" | grep -q "package: name='com.yavarshahrha.interview' versionCode='13' versionName='13.0.0'"
+            "$BT/aapt" dump permissions "$APK" | grep -q 'android.permission.CAMERA'
+            "$BT/apksigner" verify --verbose "$APK"
+            for p in assets/public/models/face_detection_yunet_2023mar.onnx assets/public/models/face_recognition_sface_2021dec.onnx assets/public/ort/ort-wasm-simd-threaded.wasm assets/public/ort/ort-wasm-simd-threaded.mjs assets/public/ort/ort.wasm.min.mjs; do
+              unzip -l "$APK" | grep -q "$p" || { echo "::error::missing in APK: $p"; exit 1; }
+            done
+            mkdir -p "$RUNNER_TEMP/v13-apk-check/lib"
+            unzip -q "$APK" 'lib/arm64-v8a/*.so' -d "$RUNNER_TEMP/v13-apk-check"
+            READELF="$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+            test -x "$READELF"
+            python3 - "$READELF" "$RUNNER_TEMP/v13-apk-check/lib/arm64-v8a" <<'PY'
+          import pathlib, subprocess, sys
+          readelf=sys.argv[1]; root=pathlib.Path(sys.argv[2]); libs=list(root.glob('*.so'))
+          if not libs: raise SystemExit('No arm64-v8a native libraries found in APK')
+          for lib in libs:
+              out=subprocess.check_output([readelf,'-lW',str(lib)],text=True)
+              loads=[line.split()[-1] for line in out.splitlines() if line.strip().startswith('LOAD ')]
+              if not loads: raise SystemExit(f'No LOAD segments found: {lib.name}')
+              bad=[x for x in loads if int(x,16)<16384]
+              if bad: raise SystemExit(f'16KB alignment check failed for {lib.name}: {bad}')
+              print('16KB ELF alignment OK:',lib.name)
+          PY
+            mkdir -p "$GITHUB_WORKSPACE/artifacts"
+            cp "$APK" "$GITHUB_WORKSPACE/artifacts/yavar-interview-v13-face-id.apk"
+            ls -l "$GITHUB_WORKSPACE/artifacts"
+            sha256sum "$GITHUB_WORKSPACE/artifacts/yavar-interview-v13-face-id.apk" | tee "$GITHUB_WORKSPACE/artifacts/SHA256SUMS.txt"
+            if [[ -n "${YAVAR_KEYSTORE_B64:-}" && -n "${YAVAR_STORE_PASSWORD:-}" && -n "${YAVAR_KEY_ALIAS:-}" && -n "${YAVAR_KEY_PASSWORD:-}" ]]; then
+              echo 'Stable signing: enabled' | tee "$GITHUB_WORKSPACE/artifacts/signing-status.txt"
+            else
+              echo 'Stable signing: disabled; upgrade compatibility is not guaranteed' | tee "$GITHUB_WORKSPACE/artifacts/signing-status.txt"
+            fi
+          } 2>&1 | tee -a "$LOG"
+      - name: Upload Face-ID APK artifact (test build, not a release)
+        uses: actions/upload-artifact@v6
+        with:
+          name: yavar-interview-v13-face-id-apk
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish build status (ci-status branch + PR comment when a PR exists)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set +e
+          LOG="$RUNNER_TEMP/faceid-build.log"
+          OUT="$RUNNER_TEMP/status.md"
+          {
+            echo "# Face-ID build: ${JOB_STATUS}"
+            echo "commit: ${GITHUB_SHA}"
+            echo "run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "time: $(date -u +%FT%TZ)"
+            echo
+            if [ -f "$LOG" ]; then
+              echo "## Error and warning lines"
+              echo '```'
+              grep -E '::error::|::warning::|ERROR|FAILED|FAIL |PASS |Error:|error during|Could not' "$LOG" | tail -n 40
+              echo '```'
+              echo
+              echo "## Last lines of the build log"
+              echo '```'
+              tail -n 70 "$LOG"
+              echo '```'
+            else
+              echo "(no build log was produced)"
+            fi
+          } > "$OUT"
+          D="$RUNNER_TEMP/ci-status"; rm -rf "$D"; mkdir -p "$D"; cd "$D"
+          git init -q
+          git config user.name "face-id-ci"; git config user.email "face-id-ci@users.noreply.github.com"
+          cp "$OUT" face-id-latest.md
+          git add face-id-latest.md
+          git commit -q -m "Face-ID build ${JOB_STATUS} ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/ci-status
+          PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$GITHUB_REF_NAME" --state open --json number --jq '.[0].number' 2>/dev/null)"
+          if [ -n "$PR" ]; then gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$OUT"; fi
+          exit 0
