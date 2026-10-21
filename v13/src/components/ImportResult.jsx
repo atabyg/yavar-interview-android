@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { FileUp, CheckCircle2, AlertTriangle } from "lucide-react";
 import { parseResults, matchRecord, buildPatch } from "../exchange.js";
+import { looksLikeContractJson, parseContractResults, summarizeChanges, verifyEvidenceAgainstTranscript } from "../contract.js";
+import { checkSegmentCitations } from "../transcript-segments.js";
 import { patchInterview } from "../db";
 import { readFileText } from "../docx";
 import { Sheet, toast, fa } from "../ui";
@@ -8,7 +10,13 @@ import { getSettings, saveSettings } from "../settings";
 import { fileBase, interviewExcel, interviewPdf } from "../export";
 import { saveFiles } from "../native";
 
-// Register the coded text produced by an external AI: pick a txt/Word file, paste text, or arrive here via Android Share.
+// Register the result produced by an external AI (JSON contract YAVAR_CASE_RESULT v1, or the legacy coded text): pick a txt/json/Word file,
+// paste text, or arrive here via Android Share. Contract results are validated, their evidence is checked against the stored transcript
+// and the change is summarised before anything is written; the previous analysis is kept in analysisHistory.
+const prepareRow = (r, rec) => (r.isContractJson
+  ? checkSegmentCitations(verifyEvidenceAgainstTranscript(r, (rec && rec.transcript) || ""), (rec && rec.transcript) || "")
+  : r);
+
 export default function ImportResult({ items, initialText = "", initialName = "", initialError = "", initialBase64 = "", initialMime = "", onClose }) {
   const [text, setText] = useState(initialText);
   const [fileName, setFileName] = useState(initialName);
@@ -17,14 +25,17 @@ export default function ImportResult({ items, initialText = "", initialName = ""
   const [busy, setBusy] = useState("");
   const [autoExport, setAutoExport] = useState(!!getSettings().autoExportAfterImport);
   const [message, setMessage] = useState(initialError);
+  const [problems, setProblems] = useState([]);
   const fileRef = useRef(null);
 
   function analyse(value) {
     setMessage("");
-    const parsed = parseResults(value).filter((r) => r.hasContent);
+    const contract = looksLikeContractJson(value) ? parseContractResults(value) : { rows: [], errors: [] };
+    const parsed = [...contract.rows, ...parseResults(value)].filter((r) => r.hasContent);
+    setProblems(contract.errors);
     if (!parsed.length) {
       setRows([]);
-      setMessage("نتیجهٔ کدگذاری‌شدهٔ معتبر پیدا نشد. متن باید با #YAVAR_RESULT v1 شروع شود و پاسخ‌ها با کدهایی مثل Q12-01 آمده باشند (قالب خالی پرامپت هم پذیرفته نمی‌شود).");
+      setMessage("نتیجهٔ معتبر پیدا نشد. قالب استاندارد JSON با contract=YAVAR_CASE_RESULT است (قالب قدیمی #YAVAR_RESULT v1 هم پذیرفته می‌شود)؛ قالب خالی پرامپت پذیرفته نمی‌شود." + (contract.errors.length ? " — " + contract.errors.slice(0, 3).join(" | ") : ""));
       return;
     }
     setPicks({});
@@ -78,7 +89,11 @@ export default function ImportResult({ items, initialText = "", initialName = ""
       await saveSettings({ autoExportAfterImport: autoExport });
       const done = [];
       for (const { r, rec } of jobs) {
-        const patch = buildPatch(rec, r);
+        const checked = prepareRow(r, rec);
+        const patch = buildPatch(rec, checked);
+        // The previous analysis is kept (last 5 versions) and the source of the import is recorded.
+        if (rec.analysis) patch.analysisHistory = [{ at: Date.now(), reason: "replaced-by-import", analysis: rec.analysis }, ...(Array.isArray(rec.analysisHistory) ? rec.analysisHistory : [])].slice(0, 5);
+        patch.externalImport = { at: Date.now(), format: r.isContractJson ? "json" : "text", fileName, contract: r.contract || null };
         const next = await patchInterview(rec.id, patch);
         done.push(next || { ...rec, ...patch });
       }
@@ -104,22 +119,25 @@ export default function ImportResult({ items, initialText = "", initialName = ""
   return (
     <Sheet title="ثبت نتیجهٔ هوش مصنوعی بیرونی" onClose={busy ? () => {} : onClose}>
       <div style={{ maxHeight: "72vh", overflowY: "auto" }}>
-        <div className="mut" style={{ lineHeight: 1.9 }}>فایل txt یا Word (docx) خروجی هوش مصنوعی را انتخاب کنید یا متن را بچسبانید. برنامه از روی RECORD_ID، شمارهٔ پرونده و تاریخ شمسی متن، پروندهٔ درست را پیدا می‌کند و پاسخ‌ها را جای‌گذاری می‌کند. این کار کاملاً آفلاین است.</div>
+        <div className="mut" style={{ lineHeight: 1.9 }}>فایل JSON، txt یا Word (docx) خروجی هوش مصنوعی را انتخاب کنید یا متن را بچسبانید. برنامه نتیجه را اعتبارسنجی می‌کند، شاهد هر پاسخ را با متن ذخیره‌شدهٔ پرونده تطبیق می‌دهد، از روی RECORD_ID (یا شمارهٔ پرونده و تاریخ) پروندهٔ درست را پیدا می‌کند و پیش از ثبت خلاصهٔ تغییرات را نشان می‌دهد. این کار کاملاً آفلاین است و نیازی به تحلیل دوباره ندارد.</div>
         <div className="row" style={{ gap: 8, flexWrap: "wrap", margin: "10px 0" }}>
           <button className="btn sm" disabled={!!busy} onClick={() => fileRef.current && fileRef.current.click()}><FileUp size={14} /> انتخاب فایل از حافظه</button>
-          <input ref={fileRef} type="file" hidden accept=".txt,.md,.text,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={onFile} />
+          <input ref={fileRef} type="file" hidden accept=".txt,.md,.text,.json,.docx,text/plain,application/json,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={onFile} />
           <button className="btn alt sm" disabled={!!busy || !text.trim()} onClick={() => analyse(text)}>بررسی متن</button>
         </div>
         {fileName && <div className="mut">فایل: {fileName}</div>}
         <textarea className="inp tx" rows={5} placeholder="یا متن خروجی هوش مصنوعی را اینجا بچسبانید…" value={text} onChange={(e) => setText(e.target.value)} style={{ direction: "rtl", fontSize: 12 }} />
         {message && <div style={{ color: "var(--terra)", fontSize: 13, lineHeight: 1.9, margin: "8px 0" }}>{message}</div>}
+        {problems.length > 0 && rows.length > 0 && <ul className="l" style={{ color: "var(--terra)", fontSize: 12 }}>{problems.slice(0, 4).map((w, k) => <li key={k}>{w}</li>)}</ul>}
         {rows.map((r, i) => {
           const rec = targetOf(r, i);
+          const view = prepareRow(r, rec);
+          const sum = rec && r.isContractJson ? summarizeChanges(rec.analysis && rec.analysis.formAnswers, view.referralAnswers) : null;
           const pool = (r.match.candidates.length ? r.match.candidates : items).slice(0, 60);
           return (
             <div className="card" key={i} style={{ margin: "8px 0" }}>
               <b>{r.clientName || "بدون نام"} · پرونده {r.caseNumber || "؟"} · {r.date || "بدون تاریخ"}</b>
-              <div className="mut" style={{ marginTop: 3 }}>{r.label} — {fa(r.stats.answered)} از {fa(r.stats.total)} پاسخ ({fa(r.stats.coverage)}٪){r.stats.overall !== null ? " — امتیاز کل " + fa(r.stats.overall) : " — نمرهٔ شایستگی ناقص یا خالی"}</div>
+              <div className="mut" style={{ marginTop: 3 }}>{r.label} — {fa(view.stats.answered)} از {fa(view.stats.total)} پاسخ ({fa(view.stats.coverage)}٪){view.stats.overall !== null ? " — امتیاز کل " + fa(view.stats.overall) : (r.isContractJson ? "" : " — نمرهٔ شایستگی ناقص یا خالی")}</div>
               {rec
                 ? <div style={{ color: "var(--teal)", fontSize: 13, marginTop: 5 }}><CheckCircle2 size={14} style={{ verticalAlign: "-2px" }} /> {rec.candidate || rec.title}{r.match.record ? " (" + r.match.how + ")" : ""}</div>
                 : <div style={{ marginTop: 5 }}>
@@ -130,7 +148,8 @@ export default function ImportResult({ items, initialText = "", initialName = ""
                     </select>
                   </div>}
               {rec && rec.analysis && <div className="mut" style={{ color: "var(--terra)", marginTop: 4 }}>{Array.isArray(rec.analysis.formAnswers) && rec.analysis.formAnswers.some((x) => x && x.reviewStatus === "human_reviewed") ? "تحلیل قبلی و بازبینی‌های انسانی این پرونده با نتیجهٔ واردشده جایگزین می‌شود." : "تحلیل قبلی این پرونده با این نتیجه جایگزین می‌شود."}</div>}
-              {r.warnings.length > 0 && <ul className="l" style={{ marginTop: 6 }}>{r.warnings.slice(0, 5).map((w, k) => <li key={k}>{w}</li>)}</ul>}
+              {sum && <div className="mut" style={{ marginTop: 4 }}>پیش از ثبت: {fa(sum.added)} پاسخ جدید · {fa(sum.changed)} تغییر · {fa(sum.cleared)} پاک‌شده · {fa(sum.needsReview)} نیازمند بازبینی{sum.humanReviewedOverwritten ? " · " + fa(sum.humanReviewedOverwritten) + " بازبینی انسانی جایگزین می‌شود" : ""}</div>}
+              {view.warnings.length > 0 && <ul className="l" style={{ marginTop: 6 }}>{view.warnings.slice(0, 8).map((w, k) => <li key={k}>{w}</li>)}</ul>}
             </div>
           );
         })}
