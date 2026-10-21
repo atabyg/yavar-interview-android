@@ -1,18 +1,44 @@
-# Face-ID (branch feature/version-13-face-id)
+# شناسهٔ چهره (Face-ID) — شاخهٔ `feature/version-13-face-id`
 
-Branched from `feature/version-13`; v13 itself is untouched.
+این شاخه از `feature/version-13` ساخته شده و v13 دست‌نخورده مانده است.
 
-## How it works
-1. Before recording, the user taps «شناسهٔ چهره» and the front camera opens (offline, no account, no limit).
-2. 5 frames are embedded by a bundled on-device model.
-3. Embedding is compared with enrolled faces (cosine similarity):
-   - match -> the SAME stored 6-digit case number is returned every time;
-   - no match -> a new non-repeating case number is issued and the face enrolled.
-4. A QR (`YAVAR:<case>:<checksum>`) is shown; the number fills the case-number field used in forms.
+## نحوهٔ کار (کاملاً آفلاین و خودکار)
+1. در صفحهٔ ضبط، کنار شمارهٔ پرونده دکمهٔ «چهره» را بزنید. دوربین جلو داخل خود برنامه باز می‌شود.
+2. چهره را داخل دایره بگیرید. برنامه خودش بررسی می‌کند: فقط یک چهره، وسط دایره، فاصلهٔ مناسب، روبه‌رو، تار نباشد، نور کافی.
+3. بعد از ثابت ماندن، ۵ فریم گرفته، با ۵ نقطهٔ چهره هم‌تراز می‌شوند و بردار عددی (۱۲۸ بعدی) ساخته می‌شود.
+4. بردار با پرونده‌های ثبت‌شده مقایسه می‌شود (شباهت کسینوسی، آستانهٔ ۰٫۵):
+   - شناسایی شد -> همان شمارهٔ پروندهٔ قبلی (و نام مددجو اگر ثبت شده)؛
+   - شناسایی نشد -> شمارهٔ جدید و غیرتکراری (یا همان شماره‌ای که از قبل در فیلد نوشته‌اید، اگر آزاد باشد)؛
+   - چند نفر بسیار شبیه -> کاربر از بین گزینه‌ها انتخاب می‌کند.
+5. نتیجه + QR (`YAVAR:<شماره>:<چک‌سام>`) چند ثانیه نشان داده می‌شود. دکمهٔ «این شخص نیست» در همین مدت فعال است. بعد صفحه خودش بسته می‌شود و شماره در فیلد پرونده (و نام، اگر مشخص باشد) نشانده می‌شود.
 
-## Honest limits
-- A face cannot be turned into an identical code on every scan (lighting/angle/noise). Matching with a threshold is the only reliable method; rare false rejects/accepts are possible. Tune `MATCH_THRESHOLD` on the real phone (Redmi 8).
-- ChatGPT's age check does not produce IDs; this feature only reuses the camera-guided idea.
-- Faces are biometric data of vulnerable clients: only a numeric vector is stored locally, never the photo; get informed consent; `forgetFace()` / `forgetAllFaces()` delete it.
-- NOT YET DONE: the model file `v13/assets/models/face-embed.onnx` (MobileFaceNet/ArcFace-mobile, 112x112) must be added, plus dependencies `onnxruntime-web` and `qrcode` in package.json and wasm files copied into assets. Not built or run on a device yet.
-- Photo-scan of a printed picture is not implemented (and printed photos are weaker/spoofable).
+## معماری
+- تشخیص چهره: **YuNet 2023mar** (Apache-2.0 از OpenCV Zoo) — ۵ نقطهٔ چهره.
+- بردار چهره: **SFace 2021dec** (Apache-2.0) — خروجی ۱۲۸ بعدی، ورودی ۱۱۲×۱۱۲ RGB خام ۰ تا ۲۵۵.
+- اجرا: ONNX Runtime Web (WASM، یک نخی) از `./ort/` و مدل‌ها از `./models/` داخل APK. هیچ اتصال اینترنتی هنگام اسکن لازم نیست.
+- ترازسازی: تبدیل شباهتی (Umeyama) روی قالب ۵ نقطه‌ای ArcFace.
+- ذخیره: حداکثر ۵ الگو به ازای هر شمارهٔ پرونده، AES-GCM، کلید غیرقابل‌استخراج در IndexedDB. عکس هرگز ذخیره نمی‌شود.
+
+## ساخت APK
+- مدل‌ها در مرحلهٔ build دانلود می‌شوند (`scripts/fetch-face-models.sh`، آدرس قفل‌شده به commit + تطبیق SHA-256). برای توسعهٔ بدون اینترنت: `SKIP_FACE_MODELS=1`.
+- دسترسی دوربین از طریق `patch-faceid.sh` (همان هوک `capacitor:sync:after`) اضافه می‌شود. شمارهٔ نسخه دست‌نخورده است (۱۳).
+- Action موجود `Build Android APK (v13 bootstrap)` با «Run workflow» روی این شاخه هم کار می‌کند.
+- نسخهٔ اختیاری با بررسی داخل APK و گزارش وضعیت: `docs/ci/build-apk-v13-face-id.yml` (داخل فایل دستورالعمل فعال‌سازی نوشته شده).
+
+## تنظیم دقت (روی گوشی واقعی)
+- `src/face-id.js`: `MATCH_THRESHOLD` (۰٫۵)، `AMBIGUOUS_MARGIN` (۰٫۰۶)، `MAX_TEMPLATES` (۵).
+- `src/face-math.js` → `faceFit` / `poseCheck`: نسبت اندازهٔ چهره به دایره، زاویهٔ سر.
+- `src/components/FaceScan.jsx`: `MIN_BRIGHT`، `MAX_BRIGHT`، `MIN_SHARP`، `STABLE_FRAMES`، `SHOTS`.
+- آزمایش پیشنهادی: ۱۰ نفر، هر کدام ۳ بار در نورهای مختلف؛ نمرهٔ شباهت همان شخص و افراد مختلف را ثبت کنید تا آستانه بین دو توزیع قرار بگیرد.
+
+## بردار قابل انتقال («مثل دادن عکس به هوش مصنوعی»)
+مدل‌های زبانی مثل ChatGPT بردار چهرهٔ پایدار نمی‌سازند؛ بردار قابل اعتماد فقط از همین مدل SFace داخل برنامه می‌آید. برای انتقال: `toVectorString` / `fromVectorString` / `matchVectorString` (قالب `YFV1:...`).
+
+## محدودیت‌ها
+- همیشه کد یکسان یعنی «تطبیق با آستانه»؛ خطای نادر (قبول یا رد اشتباه) ممکن است؛ دوقلوها و افراد بسیار شبیه، یا تغییر چهره بعد از سال‌ها.
+- تشخیص زنده‌بودن (liveness) ندارد: عکس چاپی یا صفحه ممکن است فریب بدهد.
+- نیاز به WebView با پشتیبانی WebAssembly SIMD (Android System WebView نسبتاً جدید). در غیر این صورت پیام واضح نمایش داده می‌شود.
+- دادهٔ چهره بیومتریک است: رضایت آگاهانه مددجو لازم است. در صفحهٔ اسکن گزینهٔ «حذف همهٔ داده‌های چهره» هست. داده فقط روی همین گوشی است و در پشتیبان نمی‌رود (allowBackup غیرفعال).
+- کلید رمزنگاری کنار داده ذخیره می‌شود (بدون Android Keystore)؛ این مانع دسترسی سادهٔ فایل می‌شود نه کسی که کل دادهٔ برنامه را بردارد.
+
+پیشرفت و کارهای باقی‌مانده: `docs/FACE_ID_PROGRESS.md`.

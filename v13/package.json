@@ -4,10 +4,10 @@
   "version": "13.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node scripts/prepare-face-assets.mjs && vite",
-    "build": "node scripts/prepare-face-assets.mjs && vite build",
+    "dev": "node scripts/prepare-face-assets.mjs && bash scripts/fetch-face-models.sh && vite",
+    "build": "node scripts/prepare-face-assets.mjs && bash scripts/fetch-face-models.sh && vite build",
     "test": "node --test tests/*.test.js && npm run build",
-    "capacitor:sync:after": "bash patch-v13.sh"
+    "capacitor:sync:after": "bash patch-v13.sh && bash patch-faceid.sh"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.0",

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Downloads the two Face-ID ONNX models (OpenCV Zoo, Apache-2.0) into public/models and verifies SHA-256.
 # Upstream URLs are pinned to commits; a mirror is only a fallback and is accepted ONLY if the hash matches.
+# Offline development: SKIP_FACE_MODELS=1 skips the download (the Face-ID screen then reports the missing models).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+if [[ "${SKIP_FACE_MODELS:-}" == "1" ]]; then echo "SKIP_FACE_MODELS=1: not downloading Face-ID models"; exit 0; fi
 DEST=public/models
 mkdir -p "$DEST"
 
