@@ -171,7 +171,13 @@ export default function Record({ folders, items = [], onOpen }) {
   const visibleTranscript = [transcript, partial].filter(Boolean).join("\n");
   return (
     <div>
-      {faceOpen && <FaceScan usedNumbers={usedNumbers()} onClose={() => setFaceOpen(false)} onResult={(n) => { setCaseNumber(n); setFaceOpen(false); }} />}
+      {faceOpen && <FaceScan
+        items={items}
+        currentNumber={caseNumber}
+        usedNumbers={usedNumbers()}
+        onClose={() => setFaceOpen(false)}
+        onResult={(n, name) => { setCaseNumber(n); if (name && !candidate.trim()) setCandidate(name); setFaceOpen(false); }}
+      />}
       <div className="card">
         <div className="row" style={{ marginBottom: 8 }}><ListChecks size={17} /><b className="grow">{active ? "سؤالات ارجاع (هنگام ضبط)" : "انتخاب سؤالات ارجاع"}</b></div>
         {!active && <>
@@ -212,7 +218,7 @@ export default function Record({ folders, items = [], onOpen }) {
           <button className="btn alt sm" onClick={freshCase} title="شمارهٔ جدید"><RefreshCw size={15} /> شمارهٔ جدید</button>
           <button className="btn alt sm" onClick={() => setFaceOpen(true)} title="شناسهٔ چهره"><ScanFace size={15} /> چهره</button>
         </div>
-        <div className="mut" style={{ marginTop: 5, fontSize: 12 }}>شمارهٔ پرونده به‌صورت تصادفی و غیرتکراری ساخته می‌شود. برای جلسهٔ دوم یک مددجوی قبلی، همان شماره را دستی بنویسید یا با دکمهٔ «چهره» شناسایی کنید.</div>
+        <div className="mut" style={{ marginTop: 5, fontSize: 12 }}>شمارهٔ پرونده به‌صورت تصادفی و غیرتکراری ساخته می‌شود. برای مددجوی قبلی، دکمهٔ «چهره» را بزنید: دوربین جلو به‌صورت خودکار اسکن می‌کند و همان شمارهٔ قبلی را برمی‌گرداند. اگر شمارهٔ یک مددجوی قدیمی را از قبل نوشته باشید، چهرهٔ جدید به همان شماره گره می‌خورد.</div>
         <input className="inp" style={{ marginTop: 8 }} placeholder="عنوان شغلی یا مسئولیت فعلی مددجو (اختیاری)" value={position} onChange={(e) => setPosition(e.target.value)} />
         {folders.length > 0 && <div className="chips" style={{ marginTop: 10, marginBottom: 0 }}>
           <button className={"chip " + (!folderId ? "on" : "")} onClick={() => setFolderId(null)}>بدون پوشه</button>
