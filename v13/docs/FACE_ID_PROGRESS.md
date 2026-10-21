@@ -7,10 +7,10 @@ Resume file: if a run is interrupted, continue from the first unchecked item. Gi
 - [x] `src/face-id.js`: multi-template matching, ambiguous detection, number choice, AES-GCM encrypted store, `YFV1` portable vector, QR + checksum
 - [x] `src/face-engine.js`: ONNX Runtime Web loader, YuNet (detector) + SFace (embedder); syntax-checked
 - [x] `components/FaceScan.jsx` automatic flow (syntax-checked) + `Record.jsx` wiring (items, typed number, name fill-in)
-- [x] `scripts/fetch-face-models.sh` (pinned URLs + SHA-256), `scripts/prepare-face-assets.mjs`, `scripts/verify-face-models.mjs`, `package.json` (build downloads models; `capacitor:sync:after` also runs `patch-faceid.sh`)
+- [x] `scripts/fetch-face-models.sh` (pinned URLs + SHA-256, hashes re-checked against the model page), `scripts/prepare-face-assets.mjs`, `scripts/verify-face-models.mjs`, `package.json` (build downloads models; `capacitor:sync:after` also runs `patch-faceid.sh`)
 - [x] `patch-faceid.sh`: CAMERA permission only (version numbers untouched so the existing v13 workflow checks still pass)
-- [x] Optional workflow stored at `docs/ci/build-apk-v13-face-id.yml` (this integration cannot write `.github/workflows`: HTTP 403 on both tree and contents APIs)
-- [ ] A person must run the build: either activate the optional workflow (move it to `.github/workflows/`) or run `Build Android APK (v13 bootstrap)` manually on this branch; then read the result (the optional workflow writes `ci-status` / `face-id-latest.md`)
+- [x] Optional workflow parked at the repo root: `build-apk-v13-face-id.yml` (this integration cannot write `.github/workflows`: HTTP 403 on both tree and contents APIs). The first attempt to move it from `v13/docs/ci/` landed in `v13/docs/ci/.github/workflows/` (path typed relative to the folder); that stray copy was deleted
+- [ ] A person must activate it: open `build-apk-v13-face-id.yml` at the repo root on this branch -> pencil -> click at the START of the name box and type `.github/workflows/` -> commit to this branch. Alternative: run `Build Android APK (v13 bootstrap)` manually on this branch. Then read the result (`ci-status` branch, `face-id-latest.md`)
 - [ ] Pull request (the create form was shown to the user but not submitted)
 - [ ] Real-phone tuning (Redmi 8): `MATCH_THRESHOLD`, `faceFit` ratios, blur/brightness limits
 - [ ] No liveness detection yet (a printed photo or a screen can fool the scan)

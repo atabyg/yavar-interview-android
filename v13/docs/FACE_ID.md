@@ -23,7 +23,7 @@
 - مدل‌ها در مرحلهٔ build دانلود می‌شوند (`scripts/fetch-face-models.sh`، آدرس قفل‌شده به commit + تطبیق SHA-256). برای توسعهٔ بدون اینترنت: `SKIP_FACE_MODELS=1`.
 - دسترسی دوربین از طریق `patch-faceid.sh` (همان هوک `capacitor:sync:after`) اضافه می‌شود. شمارهٔ نسخه دست‌نخورده است (۱۳).
 - Action موجود `Build Android APK (v13 bootstrap)` با «Run workflow» روی این شاخه هم کار می‌کند.
-- نسخهٔ اختیاری با بررسی داخل APK و گزارش وضعیت: `docs/ci/build-apk-v13-face-id.yml` (داخل فایل دستورالعمل فعال‌سازی نوشته شده).
+- نسخهٔ اختیاری با بررسی داخل APK و گزارش وضعیت: فایل `build-apk-v13-face-id.yml` در ریشهٔ مخزن. برای فعال‌سازی: آن را در GitHub باز کنید، مداد را بزنید، در کادر نام فایل در ابتدای نام کلیک کنید و `.github/workflows/` را قبل از نام بنویسید و به همین شاخه Commit کنید.
 
 ## تنظیم دقت (روی گوشی واقعی)
 - `src/face-id.js`: `MATCH_THRESHOLD` (۰٫۵)، `AMBIGUOUS_MARGIN` (۰٫۰۶)، `MAX_TEMPLATES` (۵).
