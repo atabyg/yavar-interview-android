@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/atabyg/yavar-interview-android/blob/main/v13/docs/contracts/YAVAR_CASE_RESULT.v1.schema.json",
+  "title": "YAVAR_CASE_RESULT",
+  "description": "Versioned exchange contract between the Yavar app and any analysis engine (online API, local model, external AI). Producers should follow this schema strictly; the app validator is tolerant but loud: unknown keys are reported as warnings, unknown field codes and inconsistent items are rejected or moved to human review, never silently fixed.",
+  "type": "object",
+  "required": ["contract", "contract_version", "case_id", "results"],
+  "additionalProperties": false,
+  "properties": {
+    "contract": { "const": "YAVAR_CASE_RESULT" },
+    "contract_version": { "type": "string", "pattern": "^1\\.[0-9]+$" },
+    "forms_reference": { "type": "string", "description": "Reference of the official form pack, e.g. YAVAR-REFERRAL-1405-V5-CORRECTED-22P" },
+    "case_id": { "type": "string", "minLength": 1, "maxLength": 120, "description": "Internal record id given in the prompt (RECORD_ID). Never a client name." },
+    "case_number": { "type": "string", "maxLength": 12 },
+    "date_jalali": { "type": "string", "description": "YYYY/MM/DD (Persian or Latin digits)" },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "enum": ["complete", "partial", "failed"] },
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "generated_at": { "type": "string" },
+        "input_kind": { "enum": ["transcript", "audio+transcript", "audio"] }
+      }
+    },
+    "summary": { "type": "string", "maxLength": 1200 },
+    "warnings": { "type": "array", "maxItems": 10, "items": { "type": "string" } },
+    "results": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/field" }
+    }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "required": ["text"],
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 400, "description": "Verbatim excerpt from the stored transcript" },
+        "source_segment_ids": { "type": "array", "items": { "type": "string", "pattern": "^seg-[0-9]{3,6}$" } }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": ["form_code", "field_code", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "form_code": { "enum": ["F01", "F02"] },
+        "field_code": {
+          "enum": [
+            "F01-A01", "F01-A02", "F01-A03", "F01-A04", "F01-A05", "F01-A06",
+            "F02-C01", "F02-C02", "F02-C03", "F02-C04", "F02-C05", "F02-C06", "F02-C07", "F02-C08",
+            "F02-C09", "F02-C10", "F02-C11", "F02-C12", "F02-C13", "F02-C14", "F02-C15"
+          ]
+        },
+        "value": { "type": ["string", "null"], "maxLength": 2400 },
+        "status": { "enum": ["answered", "not_stated", "unclear", "contradictory", "needs_human_review"] },
+        "basis": { "enum": ["explicit", "corrected", "inferred", "none"] },
+        "evidence": { "type": "array", "maxItems": 5, "items": { "$ref": "#/$defs/evidence" } },
+        "confidence": { "enum": ["high", "medium", "low", null] },
+        "review_required": { "type": "boolean" },
+        "contradictions": { "type": "array", "maxItems": 5, "items": { "$ref": "#/$defs/evidence" } },
+        "notes": { "type": "string", "maxLength": 600 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "answered" } }, "required": ["status"] },
+          "then": {
+            "required": ["value", "basis", "evidence", "confidence"],
+            "properties": {
+              "value": { "type": "string", "minLength": 1 },
+              "basis": { "enum": ["explicit", "corrected"] },
+              "evidence": { "minItems": 1 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "const": "not_stated" } }, "required": ["status"] },
+          "then": { "properties": { "value": { "type": "null" }, "basis": { "const": "none" } } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "contradictory" } }, "required": ["status"] },
+          "then": { "required": ["contradictions"], "properties": { "value": { "type": "null" }, "contradictions": { "minItems": 2 } } }
+        }
+      ]
+    }
+  }
+}
