@@ -12,13 +12,14 @@ const STABLE_FRAMES = 3, SHOTS = 4; // fewer frames = faster on low-end phones; 
 // blur above ~1.5 px (sharpness < ~20 on the 112x112 crop) drops cosine below 0.8. Re-tune on the real phone.
 const MIN_BRIGHT = 55, MAX_BRIGHT = 185, MIN_SHARP = 20;
 const CONFIRM_MS = { match: 4500, new: 3000 };
+const SLOW_MS = 30000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Fully automatic: the front camera opens inside the app, the face is checked against the guide circle,
 // the scan runs by itself, the result shows for a few seconds and the screen closes (onResult).
 // The only buttons: close, "this is not that person", and choosing between look-alikes.
 export default function FaceScan({ items = [], currentNumber = "", usedNumbers = [], onResult, onClose }) {
-  const videoRef = useRef(null), streamRef = useRef(null), run = useRef(0), timer = useRef(null);
+  const videoRef = useRef(null), streamRef = useRef(null), run = useRef(0), timer = useRef(null), qhint = useRef("");
   const live = useRef({ items, currentNumber, usedNumbers });
   live.current = { items, currentNumber, usedNumbers };
   const [phase, setPhase] = useState("loading"); // loading | scan | confirm | choose | error
@@ -42,6 +43,7 @@ export default function FaceScan({ items = [], currentNumber = "", usedNumbers =
   function fail(e) {
     stopCamera();
     const msg = e instanceof FaceEngineError ? e.message
+      : e && e.name === "CameraEnded" ? "ارتباط با دوربین قطع شد؛ بسته و دوباره امتحان کنید."
       : e && e.name === "NotAllowedError" ? "دسترسی دوربین داده نشد؛ از تنظیمات گوشی اجازهٔ دوربین را بدهید."
       : e && e.name === "NotFoundError" ? "دوربین جلوی گوشی پیدا نشد."
       : "خطا در تشخیص چهره: " + (e && e.message ? e.message : e);
@@ -62,6 +64,10 @@ export default function FaceScan({ items = [], currentNumber = "", usedNumbers =
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
       if (!alive(token)) { stream.getTracks().forEach((t) => t.stop()); return; }
       streamRef.current = stream;
+      // track.stop() does not fire "ended", so this only reacts to the camera being taken away by the system
+      stream.getVideoTracks().forEach((t) => t.addEventListener("ended", () => {
+        if (alive(token) && streamRef.current === stream) fail(Object.assign(new Error("camera ended"), { name: "CameraEnded" }));
+      }));
       const v = videoRef.current; v.srcObject = stream; await v.play();
       setPhase("scan"); setHint("چهره را داخل دایره قرار دهید.");
       await scanLoop(token);
@@ -80,18 +86,22 @@ export default function FaceScan({ items = [], currentNumber = "", usedNumbers =
 
   async function scanLoop(token) {
     let prev = null, stable = 0;
+    const t0 = Date.now();
     while (alive(token)) {
       const v = videoRef.current;
       if (!v || v.readyState < 2 || !v.videoWidth) { await sleep(100); continue; }
       const j = judge(await detectFaces(v), v);
       if (!alive(token)) return;
-      setOk(j.ok); setHint(j.ok ? "ثابت بمانید…" : j.hint);
-      if (!j.ok) { prev = null; stable = 0; await sleep(80); continue; }
+      const slow = Date.now() - t0 > SLOW_MS ? " — اگر ادامه نیافت، پنجره را ببندید و شماره را دستی وارد کنید." : "";
+      setOk(j.ok);
+      if (!j.ok) { qhint.current = ""; setHint(j.hint + slow); prev = null; stable = 0; await sleep(80); continue; }
+      setHint((qhint.current || "ثابت بمانید…") + slow);
       stable = isStable(prev, j.det, j.geo.D) ? stable + 1 : 1; prev = j.det;
       if (stable < STABLE_FRAMES) { await sleep(30); continue; }
       const shots = await capture(token, v);
       if (!alive(token)) return;
       if (!shots) { prev = null; stable = 0; continue; }
+      qhint.current = "";
       await analyse(token, shots);
       return;
     }
@@ -104,8 +114,8 @@ export default function FaceScan({ items = [], currentNumber = "", usedNumbers =
       const j = judge(await detectFaces(v), v);
       if (!j.ok) { if (++misses > 3) return null; continue; }
       const crop = alignedCanvas(v, j.det.lm), q = cropQuality(crop);
-      if (q.bright < MIN_BRIGHT || q.bright > MAX_BRIGHT) { setHint("نور مناسب نیست؛ جای روشن‌تر یا بدون نور مستقیم بایستید."); if (++misses > 3) return null; continue; }
-      if (q.sharp < MIN_SHARP) { setHint("تصویر تار است؛ گوشی را ثابت نگه دارید."); if (++misses > 3) return null; continue; }
+      if (q.bright < MIN_BRIGHT || q.bright > MAX_BRIGHT) { qhint.current = "نور مناسب نیست؛ جای روشن‌تر یا بدون نور مستقیم بایستید."; setHint(qhint.current); if (++misses > 3) return null; continue; }
+      if (q.sharp < MIN_SHARP) { qhint.current = "تصویر تار است؛ گوشی را ثابت نگه دارید."; setHint(qhint.current); if (++misses > 3) return null; continue; }
       shots.push(await embedAligned(crop));
     }
     return shots.length === SHOTS ? shots : null;
