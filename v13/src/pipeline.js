@@ -6,6 +6,7 @@ import { questionSetFor } from "./questions";
 import { OfflineWhisper } from "./native-bridge";
 import { transcribeOfflineBlob } from "./offline-transcriber";
 import { transcriptStageError } from "./transcript-quality.js";
+import { joinSegmentTexts, segmentText } from "./segment-text.js";
 
 const running = new Set();
 const ext = (mime) => (/mp4/.test(mime) ? "m4a" : /ogg/.test(mime) ? "ogg" : "webm");
@@ -50,12 +51,15 @@ export async function processInterview(id, options = {}) {
             step: "تبدیل کاملاً آفلاین گفت‌وگو با Whisper (" + (i + 1) + " از " + segs.length + ")"
           });
           const text = await transcribeOfflineBlob(segs[i], i);
-          if (!text.trim()) throw new Error("مدل آفلاین از بخش " + (i + 1) + " متن قابل‌استفاده‌ای نساخت. صدای ضبط‌شده محفوظ است.");
-          texts.push(text);
+          // A silent or noisy segment stays visible as a marker; it must not stop the rest of the interview from being transcribed.
+          texts.push(segmentText(text));
           await patchInterview(id, { segTexts: texts, transcribeProviderUsed: "offline" }, true);
         }
+        const joined = joinSegmentTexts(texts);
+        if (joined.allEmpty) throw new Error("مدل آفلاین در هیچ‌یک از بخش‌ها گفتار قابل‌تشخیص نیافت. صدای ضبط‌شده محفوظ است؛ کیفیت میکروفن و فاصله را بررسی و دوباره تلاش کنید.");
         await patchInterview(id, {
-          transcript: texts.join("\n\n").trim(),
+          transcript: joined.transcript,
+          emptySegmentCount: joined.emptySegments,
           status: "transcribed",
           step: "",
           error: ""
@@ -128,7 +132,11 @@ export async function reanalyze(id) {
   const reviewed = Array.isArray(previousAnalysis && previousAnalysis.formAnswers)
     ? previousAnalysis.formAnswers.filter((item) => item && item.reviewStatus === "human_reviewed")
     : [];
-  await patchInterview(id, { analysis: null, status: "transcribed", error: "" });
+  // Keep the last successful analysis durable before clearing it, so a crash during re-analysis cannot lose it.
+  const history = previousAnalysis
+    ? [{ at: Date.now(), reason: "before-reanalysis", analysis: previousAnalysis }, ...(Array.isArray(before.analysisHistory) ? before.analysisHistory : [])].slice(0, 5)
+    : before.analysisHistory;
+  await patchInterview(id, { analysis: null, status: "transcribed", error: "", ...(history ? { analysisHistory: history } : {}) });
   await processInterview(id);
 
   const latest = await getInterview(id);
