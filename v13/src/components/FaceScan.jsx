@@ -57,6 +57,18 @@ export default function FaceScan({ items = [], currentNumber = "", usedNumbers =
     return () => { run.current++; clearTimeout(timer.current); stopCamera(); releaseEngine(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Android back button closes the scan instead of leaving the app (same pattern as the detail page in App.jsx)
+  useEffect(() => {
+    let byBack = false;
+    window.history.pushState({ faceScan: 1 }, "");
+    const pop = () => { byBack = true; onClose(); };
+    window.addEventListener("popstate", pop);
+    return () => {
+      window.removeEventListener("popstate", pop);
+      if (!byBack && window.history.state && window.history.state.faceScan) window.history.back();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function start(token) {
     try {
       await prepare();
@@ -177,7 +189,7 @@ export default function FaceScan({ items = [], currentNumber = "", usedNumbers =
 
   const camera = phase === "loading" || phase === "scan";
   return (
-    <div className="card" style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, overflow: "auto", borderRadius: 0 }}>
+    <div className="card" style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, overflow: "auto", borderRadius: 0, margin: 0, paddingTop: "calc(var(--st) + 14px)", paddingBottom: "calc(var(--sb) + 14px)" }}>
       <style>{"@keyframes yvbar{from{width:100%}to{width:0}}"}</style>
       <div className="row"><ScanFace size={18} /><b className="grow">ثبت چهره (آفلاین)</b><button className="btn alt sm" onClick={onClose} aria-label="بستن"><X size={15} /></button></div>
 
