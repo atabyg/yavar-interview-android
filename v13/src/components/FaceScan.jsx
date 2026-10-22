@@ -7,8 +7,10 @@ import { loadFaces, findMatch, chooseCaseNumber, commitFace, averageEmbeddings, 
 import { getSettings, saveSettings } from "../settings";
 import { toast } from "../ui";
 
-const STABLE_FRAMES = 4, SHOTS = 5;
-const MIN_BRIGHT = 55, MAX_BRIGHT = 215, MIN_SHARP = 20; // tune on the real phone
+const STABLE_FRAMES = 3, SHOTS = 4; // fewer frames = faster on low-end phones; the shots are averaged
+// Calibrated in CI on a real face photo: brightness 41..140 keeps cosine >= 0.9, 203 (clipped highlights) drops it to 0.49;
+// blur above ~1.5 px (sharpness < ~20 on the 112x112 crop) drops cosine below 0.8. Re-tune on the real phone.
+const MIN_BRIGHT = 55, MAX_BRIGHT = 185, MIN_SHARP = 20;
 const CONFIRM_MS = { match: 4500, new: 3000 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
