@@ -1,0 +1,85 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>face selftest</title></head>
+<body>
+<img id="face" src="/__selftest/astronaut.png" alt="">
+<script type="module">
+import { prepare, detectFaces, alignedCanvas, cropQuality, embedAligned, simdSupported } from "/__selftest/face-engine.js";
+import { cosine } from "/__selftest/face-id.js";
+import { iou } from "/__selftest/face-math.js";
+
+const lines = [];
+const log = (ok, msg) => lines.push((ok ? "PASS " : "FAIL ") + "[browser] " + msg);
+const mk = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; c.videoWidth = w; c.videoHeight = h; return c; };
+const fx = (v, n = 3) => (typeof v === "number" ? v.toFixed(n) : String(v));
+
+window.__done = (async () => {
+  try {
+    log(simdSupported(), "WebAssembly SIMD supported by this browser");
+    let t = performance.now();
+    await prepare();
+    log(true, "ONNX Runtime + both models loaded through face-engine.js (" + Math.round(performance.now() - t) + " ms)");
+
+    const img = document.getElementById("face");
+    await img.decode();
+    let ref = null;
+    try { const r = await fetch("/__selftest/reference.json"); if (r.ok) ref = await r.json(); } catch (e) { /* no reference */ }
+
+    const base = mk(img.naturalWidth, img.naturalHeight);
+    base.getContext("2d").drawImage(img, 0, 0);
+    t = performance.now();
+    const dets = await detectFaces(base);
+    const detMs = Math.round(performance.now() - t);
+    log(dets.length === 1 && dets[0].score >= 0.9, "detector finds exactly one confident face: n=" + dets.length + " score=" + (dets[0] ? fx(dets[0].score) : "-") + " (" + detMs + " ms)");
+    if (!dets.length) return lines.join("\n");
+    const d = dets[0];
+
+    if (ref) {
+      const f = ref.face, ov = iou(d, { x: f[0], y: f[1], w: f[2], h: f[3] });
+      log(ov >= 0.6, "box IoU vs OpenCV = " + fx(ov));
+      const err = d.lm.reduce((s, p, k) => s + Math.hypot(p[0] - f[4 + 2 * k], p[1] - f[5 + 2 * k]), 0) / 5 / f[2];
+      log(err <= 0.08, "mean landmark error vs OpenCV = " + fx(err * 100, 1) + "% of face width");
+    }
+
+    t = performance.now();
+    const crop = alignedCanvas(base, d.lm);
+    const q0 = cropQuality(crop);
+    const e0 = await embedAligned(crop);
+    const embMs = Math.round(performance.now() - t);
+    const norm = Math.sqrt(e0.reduce((s, x) => s + x * x, 0));
+    log(e0.length === 128 && Math.abs(norm - 1) < 1e-3, "embedding is a 128-d unit vector (" + embMs + " ms incl. alignment)");
+    if (ref) { const c = cosine(e0, ref.embedding); log(c >= 0.9, "embedding cosine vs OpenCV reference = " + fx(c, 4) + " (need >= 0.90)"); }
+    log(true, "base crop quality: sharp=" + fx(q0.sharp, 1) + " bright=" + fx(q0.bright, 0));
+
+    if (ref) { // portrait phone-like frame: letterbox + coordinate mapping on a non-square frame
+      const W = 480, H = 640, k = W / img.naturalWidth, oy = (H - img.naturalHeight * k) / 2;
+      const p = mk(W, H), g = p.getContext("2d");
+      g.fillStyle = "#000"; g.fillRect(0, 0, W, H); g.drawImage(img, 0, oy, W, img.naturalHeight * k);
+      const pd = await detectFaces(p), f = ref.face;
+      const exp = { x: f[0] * k, y: f[1] * k + oy, w: f[2] * k, h: f[3] * k };
+      log(pd.length >= 1 && iou(pd[0], exp) >= 0.6, "portrait 480x640 frame: box IoU vs expected = " + (pd[0] ? fx(iou(pd[0], exp)) : "no face"));
+    }
+
+    // robustness + calibration variants (cosine to the base embedding; need=0 means informational only)
+    const variant = async (name, filter, scale, rot, need) => {
+      const c = mk(640, 480), g = c.getContext("2d");
+      g.fillStyle = "#808080"; g.fillRect(0, 0, 640, 480);
+      g.filter = filter;
+      g.translate(320, 240); g.rotate((rot * Math.PI) / 180); g.scale(scale, scale);
+      g.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+      const ds = await detectFaces(c);
+      if (!ds.length) { log(!need, name + ": no face detected"); return; }
+      const cr = alignedCanvas(c, ds[0].lm), q = cropQuality(cr), e = await embedAligned(cr), cs = cosine(e, e0);
+      log(need ? cs >= need : true, name + ": cosine to base = " + fx(cs) + " sharp=" + fx(q.sharp, 1) + " bright=" + fx(q.bright, 0));
+    };
+    await variant("rotated 10deg, scale 0.7", "none", 0.7, 10, 0.8);
+    await variant("dim brightness(0.6)", "brightness(0.6)", 1, 0, 0.8);
+    for (const b of [1, 2, 3, 5]) await variant("blur(" + b + "px)", "blur(" + b + "px)", 1, 0, 0);
+    await variant("very dark brightness(0.3)", "brightness(0.3)", 1, 0, 0);
+    await variant("overexposed brightness(1.8)", "brightness(1.8)", 1, 0, 0);
+  } catch (e) {
+    log(false, "exception: " + (e && e.stack ? String(e.stack).split("\n").slice(0, 3).join(" | ") : e));
+  }
+  return lines.join("\n");
+})();
+</script>
+</body></html>
