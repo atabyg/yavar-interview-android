@@ -13,6 +13,9 @@ import { dayKey } from "../daily";
 const STEPS = [["ضبط", Mic], ["متن", FileText], ["تحلیل", Sparkles]];
 const stepIndex = (i) => (i.status === "done" ? STEPS.length : i.status === "analyzing" || i.status === "transcribed" ? 2 : i.status === "transcribing" || i.status === "recorded" ? 1 : i.status === "error" ? (i.failedAt === "analyze" ? 2 : 1) : 0);
 
+// Status labels for form answers that are not accepted as answers (JSON contract results).
+const STATUS_FA = { needs_human_review: "نیازمند بازبینی انسانی", unclear: "نامشخص یا نامفهوم", contradictory: "متناقض — هر دو گفته ثبت شده و انتخاب با کارشناس است", not_provided: "در خروجی موتور تحلیل نیامده" };
+
 export default function Detail({ iv, onBack, onImportResult }) {
   const [segs, setSegs] = useState([]);
   const [pdf, setPdf] = useState(-1);
@@ -57,7 +60,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
 
   function editFormItem(item) {
     setEditingFormCode(item.code);
-    setFormEdit({ answer: item.answer || "", evidence: item.evidence || "" });
+    setFormEdit({ answer: item.answer || item.proposedAnswer || "", evidence: item.evidence || "" });
   }
 
   async function saveFormReview(item) {
@@ -72,6 +75,8 @@ export default function Detail({ iv, onBack, onImportResult }) {
         answer,
         evidence,
         answered: !!answer,
+        status: answer ? "answered" : "not_stated",
+        proposedAnswer: "",
         reviewStatus: "human_reviewed",
         reviewedAt
       });
@@ -90,7 +95,11 @@ export default function Detail({ iv, onBack, onImportResult }) {
     catch (e) { toast("ساخت PDF ناموفق بود."); } finally { setPdf(-1); }
   }
   async function doXlsx() { try { await saveFile(interviewExcel(iv), fileBase(iv) + ".xlsx"); } catch (e) { toast("ساخت Excel ناموفق بود."); } }
-  async function doExternalAI() { try { await shareExchangePack([iv], dayKey(iv.createdAt)); toast("فایل صوتی و پرامپت متنیِ ساده برای اشتراک‌گذاری آماده شد؛ پیش از ارسال، اطلاعات حساس را بررسی کنید."); } catch (e) { toast("ساخت بستهٔ صوتی/پرامپت ناموفق بود: " + String((e && e.message) || e)); } }
+  async function doExternalAI() {
+    // Privacy gate: nothing leaves the app before the expert confirms (the files are plain, unencrypted and readable by the chosen app).
+    if (!(await ask("صوت و متن این مصاحبه ممکن است اطلاعات شناسایی‌کنندهٔ مددجو (صدا، نام‌ها، شماره‌ها) داشته باشد. فایل‌ها رمزگذاری نمی‌شوند و هر برنامه‌ای که انتخاب کنید آن‌ها را دریافت می‌کند. نام مددجو در فایل‌های قرارداد JSON نیامده است. ادامه می‌دهید؟", "ارسال به هوش مصنوعی بیرونی"))) return;
+    try { await shareExchangePack([iv], dayKey(iv.createdAt)); toast("فایل صوتی، متن با شناسهٔ قطعه‌ها و پرامپت قرارداد JSON برای اشتراک‌گذاری آماده شد."); } catch (e) { toast("ساخت بستهٔ صوتی/پرامپت ناموفق بود: " + String((e && e.message) || e)); }
+  }
 
   async function doOfflineTranscribe() {
     if (offlineBusy || working) return;
@@ -215,8 +224,11 @@ export default function Detail({ iv, onBack, onImportResult }) {
                         </div>
                       ) : (
                         <>
-                          <div style={{ marginTop: 5 }}>{item.answered && item.answer ? item.answer : "ثبت نشده در متن"}</div>
+                          <div style={{ marginTop: 5 }}>{item.answered && item.answer ? item.answer : (STATUS_FA[item.status] || "ثبت نشده در متن")}</div>
+                          {!item.answered && item.proposedAnswer && <div style={{ marginTop: 4, color: "var(--terra)" }}>پیشنهاد تأییدنشدهٔ موتور تحلیل: {item.proposedAnswer} — با «بازبینی / ویرایش» تأیید یا اصلاح کنید.</div>}
+                          {Array.isArray(item.contradictions) && item.contradictions.length > 0 && <ul className="l" style={{ marginTop: 4 }}>{item.contradictions.map((c, j) => <li key={j}>{c && c.text ? c.text : String(c)}</li>)}</ul>}
                           {item.evidence && <div className="mut" style={{ marginTop: 4 }}>شاهد: {item.evidence}</div>}
+                          {item.notes ? <div className="mut" style={{ marginTop: 3 }}>یادداشت موتور تحلیل: {item.notes}</div> : null}
                           <div className="mut" style={{ marginTop: 3 }}>{humanReviewed ? "بازبینی انسانی ثبت شده؛ تصمیم رسمی همچنان با کارشناس مسئول است." : "پیشنهاد هوش مصنوعی — تأییدنشده"}</div>
                         </>
                       )}
@@ -278,7 +290,7 @@ export default function Detail({ iv, onBack, onImportResult }) {
             <AudioPlayer segs={segs} totalSec={iv.durationSec} />
             <div className="row" style={{ flexWrap: "wrap", marginTop: 10 }}>
               {segs.map((b, k) => <button key={k} className="btn line sm" onClick={() => saveFile(b, `${fileBase(iv)}-${k + 1}.${ext}`)}><Share2 size={14} /> {segs.length > 1 ? "ارسال بخش " + fa(k + 1) : "ارسال صوت"}</button>)}
-              <button className="btn sm" onClick={doExternalAI}><Share2 size={14} /> ارسال صوت + پرامپت کدگذاری‌شده</button>
+              <button className="btn sm" onClick={doExternalAI}><Share2 size={14} /> ارسال صوت + پرامپت JSON</button>
               <button className="btn alt sm" disabled={offlineBusy || working} onClick={doOfflineTranscribe}><RefreshCw size={14} /> {offlineBusy ? "در حال تبدیل آفلاین…" : "تبدیل مجدد با Whisper آفلاین"}</button>
               <button className="btn alt sm" onClick={onImportResult}><FileText size={14} /> ثبت نتیجهٔ هوش مصنوعی بیرونی</button>
             </div>
