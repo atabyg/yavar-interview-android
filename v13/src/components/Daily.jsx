@@ -5,7 +5,7 @@ import { Share } from "@capacitor/share";
 import { FileText, Copy, Share2, EyeOff, Eye, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { patchInterview } from "../db";
 import { groupByDay, buildDayText, dayLabel, dayFileName, timeLabel, AI_PROMPT } from "../daily";
-import { toast } from "../ui";
+import { ask, toast } from "../ui";
 import { shareExchangePack } from "../exchange-share";
 
 async function copyText(text) {
@@ -16,6 +16,9 @@ async function copyText(text) {
     const ok = document.execCommand("copy"); document.body.removeChild(t); return ok;
   } catch (e) { return false; }
 }
+
+// Privacy gate for every path that sends interview content out of the app: the files are plain (unencrypted) and the chosen app receives them.
+const PRIVACY_NOTE = "این فایل‌ها رمزگذاری نمی‌شوند و ممکن است صدا، نام مددجو، شمارهٔ پرونده یا محتوای حساس گفت‌وگو را داشته باشند؛ هر برنامه‌ای که انتخاب کنید آن‌ها را دریافت می‌کند. ادامه می‌دهید؟";
 
 let dailySaveQueue = Promise.resolve();
 
@@ -81,14 +84,17 @@ export default function Daily({ items, onImportResult }) {
 
   async function toggle(i) { await patchInterview(i.id, { dailyExcluded: !i.dailyExcluded }); }
   async function copy(key, list) {
+    if (!(await ask("متن روز (با نام مددجو و شمارهٔ پرونده) در کلیپ‌بورد قرار می‌گیرد و برنامه‌های دیگر می‌توانند آن را بخوانند. ادامه می‌دهید؟", "کپی متن روز"))) return;
     toast((await copyText(buildDayText(key, list))) ? "متن روز کپی شد." : "کپی ممکن نشد.");
   }
   async function share(key, list) {
+    if (!(await ask(PRIVACY_NOTE, "ذخیره یا ارسال متن روز"))) return;
     try { await shareFile(dayFileName(key), buildDayText(key, list)); } catch (e) { toast("ذخیره یا اشتراک فایل ممکن نشد."); }
   }
   async function shareExchange(key, list) {
     const records = list.filter((i) => !i.dailyExcluded);
-    try { await shareExchangePack(records, key); toast("فایل‌های صوتی و پرامپت کدگذاری‌شده برای هوش مصنوعی آماده شد."); }
+    if (!(await ask(PRIVACY_NOTE + " نام مددجو در فایل‌های قرارداد JSON نیامده است.", "ارسال به هوش مصنوعی بیرونی"))) return;
+    try { await shareExchangePack(records, key); toast("فایل‌های صوتی، متن با شناسهٔ قطعه‌ها و پرامپت قرارداد JSON آماده شد."); }
     catch (e) { toast("ارسال بستهٔ صوتی/پرامپت ممکن نشد: " + String((e && e.message) || e)); }
   }
 
@@ -114,7 +120,7 @@ export default function Daily({ items, onImportResult }) {
             </div>
             {open && <div style={{ marginTop: 10 }}>
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <button className="btn alt sm" onClick={() => share(key, list)}><Share2 size={14} /> ذخیره / ارسال متن روز</button><button className="btn sm" onClick={() => shareExchange(key, list)}><Share2 size={14} /> ارسال صوت + پرامپت کدگذاری‌شده</button>
+                <button className="btn alt sm" onClick={() => share(key, list)}><Share2 size={14} /> ذخیره / ارسال متن روز</button><button className="btn sm" onClick={() => shareExchange(key, list)}><Share2 size={14} /> ارسال صوت + پرامپت JSON</button>
                 <button className="btn alt sm" onClick={() => copy(key, list)}><Copy size={14} /> کپی</button>
                 <button className="btn alt sm" onClick={() => setPreview(preview === key ? null : key)}>پیش‌نمایش</button>
               </div>
