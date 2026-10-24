@@ -1,0 +1,303 @@
+import { useEffect, useState } from "react";
+import { ArrowRight, Star, Trash2, FileText, FileSpreadsheet, RefreshCw, Share2, Check, Loader2, Copy, Mic, Sparkles } from "lucide-react";
+import { deleteInterview, getAudioSegments, getInterview, patchInterview } from "../db";
+import { fileBase, fmtDate, fmtDur, interviewExcel, interviewPdf } from "../export";
+import { saveFile, saveFiles } from "../native";
+import { getSettings } from "../settings";
+import { processInterview, reanalyze } from "../pipeline";
+import { ask, fa, scoreColor, size, toast } from "../ui";
+import AudioPlayer from "./AudioPlayer";
+import { shareExchangePack } from "../exchange-share";
+import { dayKey } from "../daily";
+
+const STEPS = [["ضبط", Mic], ["متن", FileText], ["تحلیل", Sparkles]];
+const stepIndex = (i) => (i.status === "done" ? STEPS.length : i.status === "analyzing" || i.status === "transcribed" ? 2 : i.status === "transcribing" || i.status === "recorded" ? 1 : i.status === "error" ? (i.failedAt === "analyze" ? 2 : 1) : 0);
+
+// Status labels for form answers that are not accepted as answers (JSON contract results).
+const STATUS_FA = { needs_human_review: "نیازمند بازبینی انسانی", unclear: "نامشخص یا نامفهوم", contradictory: "متناقض — هر دو گفته ثبت شده و انتخاب با کارشناس است", not_provided: "در خروجی موتور تحلیل نیامده" };
+
+export default function Detail({ iv, onBack, onImportResult }) {
+  const [segs, setSegs] = useState([]);
+  const [pdf, setPdf] = useState(-1);
+  const [full, setFull] = useState(false);
+  const [offlineBusy, setOfflineBusy] = useState(false);
+  const [f, setF] = useState({ candidate: iv.candidate, position: iv.position, title: iv.title });
+  const [editingFormCode, setEditingFormCode] = useState("");
+  const [formEdit, setFormEdit] = useState({ answer: "", evidence: "" });
+  const [savingFormReview, setSavingFormReview] = useState(false);
+  const [autoExportStarted, setAutoExportStarted] = useState(false);
+
+  useEffect(() => {
+    if (autoExportStarted || iv.status !== "done" || !iv.analysis || !Array.isArray(iv.analysis.formAnswers) || !getSettings().autoExportAfterAnalysis || iv.autoExportPromptedAt || iv.autoExportedAt) return;
+    setAutoExportStarted(true);
+    (async () => {
+      try {
+        const pdfBlob = await interviewPdf(iv, getSettings().org);
+        const excelBlob = interviewExcel(iv);
+        await saveFiles([
+          { blob: pdfBlob, name: fileBase(iv) + ".pdf" },
+          { blob: excelBlob, name: fileBase(iv) + ".xlsx" }
+        ]);
+        await patchInterview(iv.id, { autoExportPromptedAt: Date.now() });
+        toast("پیش‌نویس ارجاع در PDF و Excel تولید شد؛ پنجرهٔ ذخیره/ارسال باز شد.");
+      } catch (error) {
+        toast("ذخیرهٔ خودکار فایل‌ها ناموفق بود؛ از دکمه‌های PDF و Excel استفاده کنید.");
+      }
+    })();
+  }, [iv.id, iv.status, iv.analysis, iv.autoExportedAt, autoExportStarted]);
+
+
+  useEffect(() => {
+    let off = false;
+    getAudioSegments(iv.id).then((b) => { if (!off) setSegs(b); });
+    return () => { off = true; };
+  }, [iv.id, iv.segs]);
+
+  const a = iv.analysis;
+  const working = iv.status === "transcribing" || iv.status === "analyzing";
+  const cur = stepIndex(iv);
+  const save = (k) => () => f[k] !== iv[k] && patchInterview(iv.id, { [k]: f[k] });
+
+  function editFormItem(item) {
+    setEditingFormCode(item.code);
+    setFormEdit({ answer: item.answer || item.proposedAnswer || "", evidence: item.evidence || "" });
+  }
+
+  async function saveFormReview(item) {
+    if (!a || !Array.isArray(a.formAnswers) || savingFormReview) return;
+    setSavingFormReview(true);
+    try {
+      const answer = String(formEdit.answer || "").trim();
+      const evidence = String(formEdit.evidence || "").trim();
+      const reviewedAt = Date.now();
+      const formAnswers = a.formAnswers.map((current) => current.code !== item.code ? current : {
+        ...current,
+        answer,
+        evidence,
+        answered: !!answer,
+        status: answer ? "answered" : "not_stated",
+        proposedAnswer: "",
+        reviewStatus: "human_reviewed",
+        reviewedAt
+      });
+      await patchInterview(iv.id, { analysis: { ...a, formAnswers, humanReviewUpdatedAt: reviewedAt } });
+      setEditingFormCode("");
+      toast("بازبینی انسانی این فیلد در پرونده ثبت شد.");
+    } catch (error) {
+      toast("ثبت بازبینی انجام نشد؛ دوباره تلاش کنید.");
+    } finally {
+      setSavingFormReview(false);
+    }
+  }
+
+  async function doPdf() {
+    try { setPdf(0); const b = await interviewPdf(iv, getSettings().org, setPdf); await saveFile(b, fileBase(iv) + ".pdf"); }
+    catch (e) { toast("ساخت PDF ناموفق بود."); } finally { setPdf(-1); }
+  }
+  async function doXlsx() { try { await saveFile(interviewExcel(iv), fileBase(iv) + ".xlsx"); } catch (e) { toast("ساخت Excel ناموفق بود."); } }
+  async function doExternalAI() {
+    // Privacy gate: nothing leaves the app before the expert confirms (the files are plain, unencrypted and readable by the chosen app).
+    if (!(await ask("صوت و متن این مصاحبه ممکن است اطلاعات شناسایی‌کنندهٔ مددجو (صدا، نام‌ها، شماره‌ها) داشته باشد. فایل‌ها رمزگذاری نمی‌شوند و هر برنامه‌ای که انتخاب کنید آن‌ها را دریافت می‌کند. نام مددجو در فایل‌های قرارداد JSON نیامده است. ادامه می‌دهید؟", "ارسال به هوش مصنوعی بیرونی"))) return;
+    try { await shareExchangePack([iv], dayKey(iv.createdAt)); toast("فایل صوتی، متن با شناسهٔ قطعه‌ها و پرامپت قرارداد JSON برای اشتراک‌گذاری آماده شد."); } catch (e) { toast("ساخت بستهٔ صوتی/پرامپت ناموفق بود: " + String((e && e.message) || e)); }
+  }
+
+  async function doOfflineTranscribe() {
+    if (offlineBusy || working) return;
+    if (!(await ask("متن فعلی حذف نمی‌شود؛ در سابقه نگه داشته می‌شود. صوت اصلی با Whisper آفلاین دوباره تبدیل خواهد شد و تحلیل قبلی تا تحلیل مجدد کنار گذاشته می‌شود.", "تبدیل مجدد آفلاین"))) return;
+    setOfflineBusy(true);
+    try {
+      const oldText = String(iv.transcript || "").trim();
+      const history = [...(Array.isArray(iv.transcriptHistory) ? iv.transcriptHistory : [])];
+      if (oldText) history.unshift({
+        transcript: oldText,
+        savedAt: Date.now(),
+        provider: iv.transcribeProviderUsed || "منبع نامشخص"
+      });
+      await patchInterview(iv.id, {
+        transcript: "",
+        segTexts: [],
+        transcribeProviderUsed: "",
+        transcriptHistory: history.slice(0, 5),
+        analysis: null,
+        status: "recorded",
+        step: "",
+        failedAt: null,
+        error: ""
+      });
+      await processInterview(iv.id, {
+        transcribeOnly: true,
+        transcribeProvider: "offline",
+        forceTranscribe: true,
+        forceFreshTranscription: true
+      });
+      const result = await getInterview(iv.id);
+      if ((result && result.transcript || "").trim()) toast("تبدیل آفلاین پایان یافت؛ متن جدید در پرونده ذخیره شد.");
+      else toast("تبدیل آفلاین کامل نشد: " + String((result && result.error) || "وضعیت پرونده و مدل را بررسی کنید."));
+    } catch (error) {
+      toast("تبدیل آفلاین آغاز نشد: " + String((error && error.message) || error));
+    } finally {
+      setOfflineBusy(false);
+    }
+  }
+  const ext = /mp4/.test(iv.mime) ? "m4a" : /ogg/.test(iv.mime) ? "ogg" : "webm";
+
+  return (
+    <div className="page">
+      <div className="top">
+        <button className="ib" onClick={onBack}><ArrowRight size={20} /></button>
+        <div className="grow"><b className="ell">{iv.candidate || iv.title}</b><small>{fmtDate(iv.createdAt)} • {fmtDur(iv.durationSec)} • {size(iv.sizeBytes)}</small></div>
+        <button className="ib" onClick={() => patchInterview(iv.id, { starred: !iv.starred })}><Star size={20} fill={iv.starred ? "#D4A237" : "none"} color={iv.starred ? "#D4A237" : "#14284B"} /></button>
+      </div>
+      <div className="main">
+        <div className="card">
+          <div className="steps">{STEPS.map(([n, Ic], k) => (
+            <div key={n} className={"step " + (k < cur ? "done" : k === cur ? "cur" : "")}><span>{k < cur ? <Check size={14} /> : k === cur && working ? <Loader2 size={14} className="spin" /> : <Ic size={14} />}</span>{n}</div>
+          ))}</div>
+          {a && a.analysisStaleAfterReanalysisFailure && <div style={{ color: "var(--terra)", background: "var(--card)", border: "1px solid var(--line)", borderRadius: 10, padding: 10, marginTop: 8, lineHeight: 1.8, fontSize: 13 }}>تحلیل مجدد کامل نشد؛ آخرین تحلیل موفق قبلی حفظ شده و ممکن است تازه نباشد. خطا را برطرف کنید و دوباره تلاش کنید. {a.reanalysisFailureMessage || ""}</div>}
+          {(working || (iv.status === "transcribed" && iv.step)) && <div className="mut" style={{ textAlign: "center", lineHeight: 1.9 }}>{iv.step}</div>}
+          {(iv.status === "recorded" || (iv.status === "transcribed" && !iv.step)) && !(getSettings().apiKeys && getSettings().apiKeys[getSettings().analyzeProvider]) && <div className="mut" style={{ textAlign: "center", lineHeight: 1.9 }}>متن صوت محفوظ است؛ برای استخراج معنایی پیش‌نویس فرم، کلید سرویس تحلیل را در «تنظیمات» وارد کنید. امتیاز رسمی به‌صورت خودکار تولید نمی‌شود.</div>}
+          {(iv.status === "error" || iv.status === "recorded" || iv.status === "transcribed") && (
+            <>
+              {iv.error && <div style={{ color: "var(--terra)", fontSize: 13, margin: "6px 0", lineHeight: 1.8 }}>{iv.error}</div>}
+              <button className="btn full" onClick={() => a && a.analysisStaleAfterReanalysisFailure ? reanalyze(iv.id) : processInterview(iv.id)}><RefreshCw size={16} /> {a && a.analysisStaleAfterReanalysisFailure ? "تلاش مجدد برای تحلیل" : iv.status === "error" ? "تلاش مجدد" : "شروع پردازش"}</button>
+            </>
+          )}
+        </div>
+
+        <div className="card">
+          <input className="inp" placeholder="نام مددجو" value={f.candidate} onChange={(e) => setF({ ...f, candidate: e.target.value })} onBlur={save("candidate")} />
+          <input className="inp" style={{ marginTop: 8 }} placeholder="شغل یا مسئولیت موردنظر" value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })} onBlur={save("position")} />
+        </div>
+
+        {a && (
+          <>
+            {a.overall !== null && a.overall !== undefined && a.competencies && a.competencies.length === 6 && (<div className="card row">
+              <div className="ring" style={{ width: 72, height: 72, fontSize: 26, background: scoreColor(a.overall) }}>{fa(a.overall)}</div>
+              <div className="grow"><div style={{ fontWeight: 700, fontSize: 16 }}>{a.verdict}</div><div className="mut">امتیاز کل از ۱۰۰</div></div>
+            </div>)}
+            <div className="card"><h4>خلاصه</h4><div style={{ fontSize: 13.5, lineHeight: 2 }}>{a.summary}</div></div>
+            {a.cleanTranscript && (
+              <div className="card">
+                <div className="row"><h4 className="grow">متن بازبینی‌شده برای فرم‌ها</h4>
+                  <button className="ib" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(a.cleanTranscript); toast("متن بازبینی‌شده کپی شد"); }}><Copy size={16} /></button></div>
+                <div className="tx" style={full ? { maxHeight: "none" } : {}}>{a.cleanTranscript}</div>
+                <div className="mut" style={{ marginTop: 8, lineHeight: 1.8 }}>این متن پیشنهادی مدل است؛ متن خام پایین صفحه حفظ شده و موارد نامطمئن را پیش از ثبت نهایی بازبینی کنید.</div>
+              </div>
+            )}
+            {Array.isArray(a.qaPairs) && a.qaPairs.length > 0 && (
+              <div className="card"><h4>پرسش و پاسخ‌های گفت‌وگوی ارجاع</h4>
+                {a.qaPairs.map((q, k) => (
+                  <div key={k} style={{ padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
+                    <div className="mut">پرسش ({q.questionSpeaker || "نامشخص"}): {q.question}</div>
+                    <div style={{ marginTop: 4 }}>پاسخ ({q.answerSpeaker || "نامشخص"}): {q.answer || "پاسخ روشن در متن پیدا نشد."}</div>
+                    {q.matchedQuestion && <div className="mut" style={{ marginTop: 3 }}>تطبیق با فرم: {q.matchedQuestion}</div>}
+                    <div className="mut" style={{ marginTop: 3 }}>اطمینان تطبیق: {q.confidence || "پایین"}{q.evidence ? " — شاهد: " + q.evidence : ""}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {Array.isArray(a.formAnswers) && a.formAnswers.length > 0 && (
+              <div className="card">
+                <h4>پیش‌نویس فرم‌های ارجاع — نیازمند بازبینی کارشناس</h4>
+                <div className="mut" style={{ marginBottom: 8, lineHeight: 1.8 }}>پاسخ‌ها فقط از شواهد گفت‌وگو استخراج شده‌اند. موارد خالی به معنی «ثبت نشده در متن» است؛ این پیش‌نویس جایگزین فرم رسمی، امتیازدهی کارشناس، مشاهدهٔ رفتاری، رضایت یا امضا نیست.</div>
+                {a.formAnswers.map((item, k) => {
+                  const editing = editingFormCode === item.code;
+                  const humanReviewed = item.reviewStatus === "human_reviewed";
+                  return (
+                    <div key={item.code || k} style={{ padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
+                      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                        <b className="grow">{item.formId || ""} · {item.question}</b>
+                        <span className="pill">{humanReviewed ? "بازبینی انسانی" : "اطمینان AI: " + (item.confidence || "پایین")}</span>
+                        <button className="btn line sm" onClick={() => editing ? setEditingFormCode("") : editFormItem(item)}>{editing ? "بستن ویرایش" : humanReviewed ? "ویرایش بازبینی" : "بازبینی / ویرایش"}</button>
+                      </div>
+                      {editing ? (
+                        <div style={{ marginTop: 8 }}>
+                          <label className="mut">پاسخ بازبینی‌شده (اگر در متن نیست، خالی بماند)</label>
+                          <textarea className="inp tx" rows={3} value={formEdit.answer} onChange={(e) => setFormEdit({ ...formEdit, answer: e.target.value })} />
+                          <label className="mut" style={{ display: "block", marginTop: 8 }}>شاهد متنی بازبینی‌شده</label>
+                          <textarea className="inp tx" rows={2} value={formEdit.evidence} onChange={(e) => setFormEdit({ ...formEdit, evidence: e.target.value })} />
+                          <div className="row" style={{ gap: 8, marginTop: 8 }}>
+                            <button className="btn sm" disabled={savingFormReview} onClick={() => saveFormReview(item)}>{savingFormReview ? "در حال ثبت…" : "ثبت بازبینی انسانی"}</button>
+                            <button className="btn line sm" disabled={savingFormReview} onClick={() => setEditingFormCode("")}>انصراف</button>
+                          </div>
+                          <div className="mut" style={{ marginTop: 5 }}>پاسخ خالی به معنی «در متن ثبت نشده» باقی می‌ماند و به «ندارد» تبدیل نمی‌شود.</div>
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ marginTop: 5 }}>{item.answered && item.answer ? item.answer : (STATUS_FA[item.status] || "ثبت نشده در متن")}</div>
+                          {!item.answered && item.proposedAnswer && <div style={{ marginTop: 4, color: "var(--terra)" }}>پیشنهاد تأییدنشدهٔ موتور تحلیل: {item.proposedAnswer} — با «بازبینی / ویرایش» تأیید یا اصلاح کنید.</div>}
+                          {Array.isArray(item.contradictions) && item.contradictions.length > 0 && <ul className="l" style={{ marginTop: 4 }}>{item.contradictions.map((c, j) => <li key={j}>{c && c.text ? c.text : String(c)}</li>)}</ul>}
+                          {item.evidence && <div className="mut" style={{ marginTop: 4 }}>شاهد: {item.evidence}</div>}
+                          {item.notes ? <div className="mut" style={{ marginTop: 3 }}>یادداشت موتور تحلیل: {item.notes}</div> : null}
+                          <div className="mut" style={{ marginTop: 3 }}>{humanReviewed ? "بازبینی انسانی ثبت شده؛ تصمیم رسمی همچنان با کارشناس مسئول است." : "پیشنهاد هوش مصنوعی — تأییدنشده"}</div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {Array.isArray(a.transcriptWarnings) && a.transcriptWarnings.length > 0 && (
+              <div className="card">
+                <h4>ابهام‌های متن و هشدارهای تشخیص</h4>
+                <ul className="l">{a.transcriptWarnings.map((warning, k) => <li key={k}>{warning}</li>)}</ul>
+                <div className="mut" style={{ marginTop: 6, lineHeight: 1.8 }}>این بخش‌ها برای جلوگیری از حدس‌زدن ثبت شده‌اند؛ در صورت نیاز فایل صوتی را گوش کنید.</div>
+              </div>
+            )}
+            {Array.isArray(a.competencies) && a.competencies.length > 0 && (<div className="card"><h4>شایستگی‌ها</h4>
+              {a.competencies.map((c) => (
+                <div key={c.name} style={{ marginBottom: 10 }}>
+                  <div className="row"><span className="grow" style={{ fontSize: 13, fontWeight: 600 }}>{c.name}</span><b>{fa(c.score)}</b></div>
+                  <div className="bar"><i style={{ width: c.score * 10 + "%", background: scoreColor(c.score * 10) }} /></div>
+                  {c.note && <div className="mut" style={{ marginTop: 2 }}>{c.note}</div>}
+                </div>
+              ))}
+            </div>)}
+            {[["نقاط قوت", a.strengths, ""], ["نقاط قابل بهبود", a.weaknesses, ""], ["هشدارها", a.redFlags, "red"], ["سؤال‌های پیشنهادی مرحلهٔ بعد", a.followUp, ""]].map(([t, l, c]) => l.length > 0 && (
+              <div className="card" key={t}><h4>{t}</h4><ul className={"l " + c}>{l.map((x, k) => <li key={k}>{x}</li>)}</ul></div>
+            ))}
+            <div className="card row">
+              <button className="btn grow" onClick={doPdf} disabled={pdf >= 0}>{pdf >= 0 ? <><Loader2 size={16} className="spin" /> {fa(pdf)}٪</> : <><FileText size={16} /> PDF</>}</button>
+              <button className="btn alt grow" onClick={doXlsx}><FileSpreadsheet size={16} /> Excel</button>
+              <button className="btn line" onClick={() => reanalyze(iv.id)} title="تحلیل مجدد"><RefreshCw size={16} /></button>
+            </div>
+          </>
+        )}
+
+        {Array.isArray(iv.transcriptHistory) && iv.transcriptHistory.length > 0 && (
+          <div className="card">
+            <h4>سابقهٔ متن‌های قبلی (برای جلوگیری از ازدست‌رفتن داده)</h4>
+            {iv.transcriptHistory.map((entry, index) => (
+              <details key={index} style={{ marginTop: 8 }}>
+                <summary style={{ cursor: "pointer" }}>{fmtDate(entry.savedAt || iv.createdAt)} — {entry.provider || "منبع نامشخص"}</summary>
+                <div className="tx" style={{ marginTop: 8, maxHeight: 260 }}>{entry.transcript || ""}</div>
+              </details>
+            ))}
+          </div>
+        )}
+
+        {iv.transcript && (
+          <div className="card"><div className="row"><h4 className="grow">متن خام تشخیص گفتار (سند اصلی)</h4>
+            <button className="ib" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(iv.transcript); toast("کپی شد"); }}><Copy size={16} /></button></div>
+            <div className="tx" style={full ? { maxHeight: "none" } : {}}>{iv.transcript}</div>
+            <button className="btn alt sm" style={{ marginTop: 8 }} onClick={() => setFull(!full)}>{full ? "کمتر" : "نمایش کامل"}</button>
+          </div>
+        )}
+
+        {segs.length > 0 && (
+          <div className="card">
+            <h4>پخش صوت و انتخاب زمان دلخواه</h4>
+            <AudioPlayer segs={segs} totalSec={iv.durationSec} />
+            <div className="row" style={{ flexWrap: "wrap", marginTop: 10 }}>
+              {segs.map((b, k) => <button key={k} className="btn line sm" onClick={() => saveFile(b, `${fileBase(iv)}-${k + 1}.${ext}`)}><Share2 size={14} /> {segs.length > 1 ? "ارسال بخش " + fa(k + 1) : "ارسال صوت"}</button>)}
+              <button className="btn sm" onClick={doExternalAI}><Share2 size={14} /> ارسال صوت + پرامپت JSON</button>
+              <button className="btn alt sm" disabled={offlineBusy || working} onClick={doOfflineTranscribe}><RefreshCw size={14} /> {offlineBusy ? "در حال تبدیل آفلاین…" : "تبدیل مجدد با Whisper آفلاین"}</button>
+              <button className="btn alt sm" onClick={onImportResult}><FileText size={14} /> ثبت نتیجهٔ هوش مصنوعی بیرونی</button>
+            </div>
+          </div>
+        )}
+        <button className="btn red full" onClick={async () => { if (await ask("این مصاحبه همراه با صوت و گزارش برای همیشه حذف شود؟", "حذف", true)) { await deleteInterview(iv.id); onBack(); } }}><Trash2 size={16} /> حذف مصاحبه</button>
+      </div>
+    </div>
+  );
+}

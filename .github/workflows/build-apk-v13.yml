@@ -1,0 +1,169 @@
+name: Build Android APK (v13 bootstrap)
+
+on:
+  push:
+    branches: [feature/version-13]
+    paths:
+      - 'v13/**'
+      - '.github/workflows/build-apk-v13.yml'
+  workflow_dispatch:
+  pull_request:
+    branches: [feature/version-12-noisy-persian-transcription]
+    paths:
+      - 'v13/**'
+      - '.github/workflows/build-apk-v13.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-bootstrap-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Validate and select v13 source
+        run: |
+          set -euo pipefail
+          test -f v13/package.json
+          test -f v13/capacitor.config.json
+          test -f v13/patch-v13.sh
+          test -f v13/src/App.jsx
+          echo "BUILD_DIR=$GITHUB_WORKSPACE/v13" >> "$GITHUB_ENV"
+          python3 - v13/capacitor.config.json <<'PY'
+          import json, sys
+          d=json.load(open(sys.argv[1],encoding='utf-8'))
+          assert d.get('appId')=='com.yavarshahrha.interview', 'Unexpected applicationId; refusing to build'
+          print('applicationId preserved:',d['appId'])
+          PY
+      - name: Restore logo and generate Android icons
+        run: |
+          set -euo pipefail
+          cd "$BUILD_DIR"
+          mkdir -p src/assets assets
+          if [ ! -f src/assets/logo.png ]; then
+            test -f assets/logo/p1.txt
+            cat assets/logo/p?.txt | base64 -d > src/assets/logo.png
+          fi
+          python3 -m pip install --disable-pip-version-check pillow
+          python3 -c "from PIL import Image; im=Image.open('src/assets/logo.png'); im.load(); print('logo ok', im.size)"
+          python3 make-icons.py
+      - name: Generate temporary lockfile and run tests
+        run: |
+          set -euo pipefail
+          cd "$BUILD_DIR"
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          test -s package-lock.json
+          npm ci --no-audit --no-fund
+          npm test
+          test -s dist/index.html
+      - name: Upload generated lockfile for pinning
+        uses: actions/upload-artifact@v6
+        with:
+          name: v13-generated-package-lock
+          path: v13/package-lock.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Generate Android project and apply v13 patches
+        env:
+          YAVAR_KEYSTORE_B64: ${{ secrets.YAVAR_KEYSTORE_B64 }}
+          YAVAR_STORE_PASSWORD: ${{ secrets.YAVAR_STORE_PASSWORD }}
+          YAVAR_KEY_ALIAS: ${{ secrets.YAVAR_KEY_ALIAS }}
+          YAVAR_KEY_PASSWORD: ${{ secrets.YAVAR_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cd "$BUILD_DIR"
+          npx cap add android
+          npx capacitor-assets generate --android
+          bash patch-android.sh
+          npx cap sync android
+          bash patch-v13.sh
+          grep -Eq 'versionCode 13' android/app/build.gradle
+          grep -Eq 'versionName "13.0.0"' android/app/build.gradle
+          ! grep -q 'versionCode 9' patch-android.sh
+          python3 - android/app/src/main/java <<'PY'
+          from pathlib import Path
+          import sys
+          files=list(Path(sys.argv[1]).rglob('MainActivity.java'))
+          if len(files)!=1: raise SystemExit(f'Expected one MainActivity.java, got {len(files)}')
+          s=files[0].read_text(encoding='utf-8')
+          a=s.find('registerPlugin(OfflineWhisperPlugin.class);')
+          b=s.find('super.onCreate(savedInstanceState);')
+          if a<0 or b<0 or a>b: raise SystemExit('OfflineWhisper registration must precede super.onCreate')
+          if 'registerPlugin(SharedInboxPlugin.class);' not in s: raise SystemExit('SharedInbox plugin not registered')
+          print('Plugin registration order verified')
+          PY
+      - name: Build and verify bootstrap APK
+        env:
+          YAVAR_KEYSTORE_B64: ${{ secrets.YAVAR_KEYSTORE_B64 }}
+          YAVAR_STORE_PASSWORD: ${{ secrets.YAVAR_STORE_PASSWORD }}
+          YAVAR_KEY_ALIAS: ${{ secrets.YAVAR_KEY_ALIAS }}
+          YAVAR_KEY_PASSWORD: ${{ secrets.YAVAR_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cd "$BUILD_DIR/android"
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          cd "$BUILD_DIR"
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BT/aapt" dump badging "$APK" | grep -q "package: name='com.yavarshahrha.interview' versionCode='13' versionName='13.0.0'"
+          "$BT/apksigner" verify --verbose "$APK"
+          mkdir -p "$RUNNER_TEMP/v13-apk-check/lib"
+          unzip -q "$APK" 'lib/arm64-v8a/*.so' -d "$RUNNER_TEMP/v13-apk-check"
+          READELF="$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          test -x "$READELF"
+          python3 - "$READELF" "$RUNNER_TEMP/v13-apk-check/lib/arm64-v8a" <<'PY'
+          import pathlib, subprocess, sys
+          readelf=sys.argv[1]; root=pathlib.Path(sys.argv[2]); libs=list(root.glob('*.so'))
+          if not libs: raise SystemExit('No arm64-v8a native libraries found in APK')
+          for lib in libs:
+              out=subprocess.check_output([readelf,'-lW',str(lib)],text=True)
+              loads=[line.split()[-1] for line in out.splitlines() if line.strip().startswith('LOAD ')]
+              if not loads: raise SystemExit(f'No LOAD segments found: {lib.name}')
+              bad=[x for x in loads if int(x,16)<16384]
+              if bad: raise SystemExit(f'16KB alignment check failed for {lib.name}: {bad}')
+              print('16KB ELF alignment OK:',lib.name)
+          PY
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          cp "$APK" "$GITHUB_WORKSPACE/artifacts/yavar-interview-v13-bootstrap.apk"
+          sha256sum "$GITHUB_WORKSPACE/artifacts/yavar-interview-v13-bootstrap.apk" | tee "$GITHUB_WORKSPACE/artifacts/SHA256SUMS.txt"
+          if [[ -n "${YAVAR_KEYSTORE_B64:-}" && -n "${YAVAR_STORE_PASSWORD:-}" && -n "${YAVAR_KEY_ALIAS:-}" && -n "${YAVAR_KEY_PASSWORD:-}" ]]; then
+            echo 'Stable signing: enabled' | tee "$GITHUB_WORKSPACE/artifacts/signing-status.txt"
+          else
+            echo 'Stable signing: disabled; upgrade compatibility is not guaranteed' | tee "$GITHUB_WORKSPACE/artifacts/signing-status.txt"
+          fi
+      - name: Upload bootstrap artifact (not a release build)
+        uses: actions/upload-artifact@v6
+        with:
+          name: yavar-interview-v13-bootstrap-apk
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  ubuntu-26-04-readiness:
+    runs-on: ubuntu-26.04
+    continue-on-error: true
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Check shell syntax and runner runtime
+        run: |
+          set -euo pipefail
+          node --version
+          bash -n v13/patch-android.sh
+          bash -n v13/patch-v13.sh
+          git diff --check
+          echo 'Non-blocking runner readiness checks passed.'
