@@ -1,7 +1,7 @@
 {
-  "name": "yavar-interview-v13",
+  "name": "yavar-interview-v14",
   "private": true,
-  "version": "13.0.0",
+  "version": "14.0.0",
   "type": "module",
   "scripts": {
     "dev": "node scripts/prepare-face-assets.mjs && bash scripts/fetch-face-models.sh && vite",
