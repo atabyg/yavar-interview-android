@@ -83,6 +83,7 @@ export async function getAudioSegments(id) {
   return rows.sort((a, b) => (a.k < b.k ? -1 : 1)).map((r) => r.blob);
 }
 export async function deleteInterview(id) {
+  const gone = await getInterview(id);
   await wrap((await store("interviews", "readwrite")).delete(id));
   const a = await store("audio", "readwrite");
   const ka = await wrap(a.getAllKeys(range(id)));
@@ -90,6 +91,14 @@ export async function deleteInterview(id) {
   const c = await store("chunks", "readwrite");
   const kc = await wrap(c.getAllKeys(range(id)));
   kc.forEach((k) => c.delete(k));
+  // Biometric privacy: when the LAST interview of a case is deleted, its stored face templates are forgotten too.
+  try {
+    const caseNumber = gone ? String(gone.caseNumber || "") : "";
+    if (caseNumber && !(await listInterviews()).some((x) => String(x.caseNumber || "") === caseNumber)) {
+      const { forgetFace } = await import("./face-id.js");
+      await forgetFace(caseNumber);
+    }
+  } catch (e) { /* the interview is already deleted; a face-store failure must not block that */ }
   emit();
 }
 export async function storageInfo() {
