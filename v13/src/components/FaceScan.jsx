@@ -5,7 +5,7 @@ import { prepare, detectFaces, alignedCanvas, cropQuality, embedAligned, release
 import { viewGeometry, faceFit, isStable } from "../face-math";
 import { loadFaces, findMatch, chooseCaseNumber, commitFace, averageEmbeddings, qrPayload, faceCount, forgetAllFaces } from "../face-id";
 import { getSettings, saveSettings } from "../settings";
-import { toast } from "../ui";
+import { ask, toast } from "../ui";
 
 const STABLE_FRAMES = 3, SHOTS = 4; // fewer frames = faster on low-end phones; the shots are averaged
 // Calibrated in CI on a real face photo: brightness 41..140 keeps cosine >= 0.9, 203 (clipped highlights) drops it to 0.49;
@@ -14,6 +14,10 @@ const MIN_BRIGHT = 55, MAX_BRIGHT = 185, MIN_SHARP = 20;
 const CONFIRM_MS = { match: 4500, new: 3000 };
 const SLOW_MS = 30000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Biometric consent: the client must agree before the camera opens. Asked once per app session.
+let consentGiven = false;
+const CONSENT_TEXT = "ثبت چهره یک داده زیست‌سنجی حساس است. پیش از ادامه، مددجو باید آگاهانه و داوطلبانه موافقت کند. تصویر ذخیره نمی‌شود؛ فقط یک بردار عددی رمزنگاری‌شده روی همین گوشی نگه داشته می‌شود و با حذف آخرین مصاحبهٔ همان پرونده یا با «حذف همهٔ داده‌های چهره» پاک می‌شود. رضایت مددجو گرفته شده است؟";
 
 // Fully automatic: the front camera opens inside the app, the face is checked against the guide circle,
 // the scan runs by itself, the result shows for a few seconds and the screen closes (onResult).
@@ -52,7 +56,15 @@ export default function FaceScan({ items = [], currentNumber = "", usedNumbers =
 
   useEffect(() => {
     const token = ++run.current;
-    start(token);
+    (async () => {
+      if (!consentGiven) {
+        const agreed = await ask(CONSENT_TEXT, "رضایت برای ثبت چهره");
+        if (!alive(token)) return;
+        if (!agreed) { onClose(); return; }
+        consentGiven = true;
+      }
+      start(token);
+    })();
     faceCount().then(setCount).catch(() => {});
     return () => { run.current++; clearTimeout(timer.current); stopCamera(); releaseEngine(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
