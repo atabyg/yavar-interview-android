@@ -24,6 +24,21 @@ export function segmentTranscript(text, maxLen = SEGMENT_MAX_CHARS) {
 
 export const labelTranscript = (text) => segmentTranscript(text).map((s) => "[" + s.id + "] " + s.text).join("\n");
 
+// Models sometimes copy the [seg-001] label into the quoted evidence. The label is not spoken text, so it is removed before the
+// evidence is compared with the stored transcript, and the id it carries is kept as a citation.
+export function stripSegmentLabels(row) {
+  if (!row || !Array.isArray(row.referralAnswers)) return row;
+  const referralAnswers = row.referralAnswers.map((a) => {
+    if (!a) return a;
+    const texts = Array.isArray(a.evidenceList) && a.evidenceList.length ? a.evidenceList : (a.evidence ? [a.evidence] : []);
+    if (!texts.some((t) => /\[seg-\d{3,6}\]/.test(String(t)))) return a;
+    const ids = new Set(Array.isArray(a.sourceSegmentIds) ? a.sourceSegmentIds : []);
+    const clean = texts.map((t) => String(t).replace(/\[(seg-\d{3,6})\]/g, (m, id) => { ids.add(id); return " "; }).replace(/\s+/g, " ").trim());
+    return { ...a, evidenceList: clean, evidence: clean.join(" | "), sourceSegmentIds: [...ids] };
+  });
+  return { ...row, referralAnswers };
+}
+
 // Cross-check the source_segment_ids cited by an engine against the segmentation of the stored transcript.
 export function checkSegmentCitations(row, transcript) {
   if (!row || !Array.isArray(row.referralAnswers)) return row;
