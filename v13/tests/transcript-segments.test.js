@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkSegmentCitations, labelTranscript, segmentTranscript } from "../src/transcript-segments.js";
+import { checkSegmentCitations, labelTranscript, segmentTranscript, stripSegmentLabels } from "../src/transcript-segments.js";
 import { A, doc, get, rowOf } from "./contract-fixtures.js";
 
 const TEXT = "first line of the interview\n\nsecond line with a number 3 here\r\nthird line";
@@ -22,6 +22,20 @@ test("a very long line is split at sentence ends into bounded chunks", () => {
   assert.ok(segs.length > 5);
   assert.ok(segs.every((s) => s.text.length <= 200));
   assert.equal(segs.map((s) => s.text).join(" "), long);
+});
+
+test("a [seg-NNN] label copied into the evidence is removed and kept as a citation", () => {
+  const spoken = "second line with a number 3";
+  const row = rowOf(doc([A("F01-A01", "ok", spoken, { evidence: [{ text: "[seg-002] " + spoken }] })]));
+  const cleaned = stripSegmentLabels(row);
+  const a = get(cleaned, "F01-A01");
+  assert.equal(a.evidence, spoken);
+  assert.deepEqual(a.evidenceList, [spoken]);
+  assert.deepEqual(a.sourceSegmentIds, ["seg-002"]);
+  const untouched = rowOf(doc([A("F01-A01", "ok", spoken)]));
+  assert.equal(stripSegmentLabels(untouched).referralAnswers[0], untouched.referralAnswers[0]);
+  const out = checkSegmentCitations(cleaned, TEXT);
+  assert.equal(get(out, "F01-A01").segmentCitationOk, true);
 });
 
 test("segment citations are cross-checked against the stored transcript", () => {
