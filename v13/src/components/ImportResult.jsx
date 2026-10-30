@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { FileUp, CheckCircle2, AlertTriangle } from "lucide-react";
 import { parseResults, matchRecord, buildPatch } from "../exchange.js";
 import { looksLikeContractJson, parseContractResults, summarizeChanges, verifyEvidenceAgainstTranscript } from "../contract.js";
-import { checkSegmentCitations } from "../transcript-segments.js";
+import { checkSegmentCitations, stripSegmentLabels } from "../transcript-segments.js";
 import { patchInterview } from "../db";
 import { readFileText } from "../docx";
 import { Sheet, toast, fa } from "../ui";
@@ -13,9 +13,12 @@ import { saveFiles } from "../native";
 // Register the result produced by an external AI (JSON contract YAVAR_CASE_RESULT v1, or the legacy coded text): pick a txt/json/Word file,
 // paste text, or arrive here via Android Share. Contract results are validated, their evidence is checked against the stored transcript
 // and the change is summarised before anything is written; the previous analysis is kept in analysisHistory.
-const prepareRow = (r, rec) => (r.isContractJson
-  ? checkSegmentCitations(verifyEvidenceAgainstTranscript(r, (rec && rec.transcript) || ""), (rec && rec.transcript) || "")
-  : r);
+// Without a target record nothing can be compared yet, so the row is shown as received.
+const prepareRow = (r, rec) => {
+  if (!r.isContractJson || !rec) return r;
+  const text = rec.transcript || "";
+  return checkSegmentCitations(verifyEvidenceAgainstTranscript(stripSegmentLabels(r), text), text);
+};
 
 export default function ImportResult({ items, initialText = "", initialName = "", initialError = "", initialBase64 = "", initialMime = "", onClose }) {
   const [text, setText] = useState(initialText);
